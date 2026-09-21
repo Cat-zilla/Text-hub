@@ -44,17 +44,43 @@ class SecureToolsTest {
 
     // ------------------------------------------------ dedicated key-size AES tools
 
-    @Test fun generalGcmToolEncryptsAtEveryKeySizeAndDetectsItOnDecrypt() {
+    @Test fun keySizeSettingMustMatchTheMessageOnDecrypt() {
         val text = "Key size is a setting, not a tool ✅"
         for (bits in listOf(128, 192, 256)) {
             val payload = enc("aes", text, mapOf("password" to password, "keySize" to bits.toString()))
-            // The key size is not stored: decryption derives each size and the GCM tag picks one.
-            assertEquals("size $bits", text, dec("aes", payload, mapOf("password" to password)))
+            // Same setting as the one used to encrypt: the message reads back.
+            assertEquals("size $bits", text, dec("aes", payload, mapOf("password" to password, "keySize" to bits.toString())))
             assertEquals(bits / 8, AesGcmPayload.keySizeOf(payload, password.toCharArray())!!)
         }
-        // A payload written at 128 bits reads back even when the setting says 256.
+        // A different key size is refused, and the message names the size the payload needs.
         val payload128 = enc("aes", text, mapOf("password" to password, "keySize" to "128"))
-        assertEquals(text, dec("aes", payload128, mapOf("password" to password, "keySize" to "256")))
+        for (wrong in listOf("192", "256")) {
+            val error = failure("aes", payload128, mapOf("password" to password, "keySize" to wrong), Direction.DECODE)
+            assertTrue("wrong=$wrong said: $error", error.contains("128-bit"))
+            assertTrue(error.contains("key size"))
+        }
+        // The same rule holds for CBC and CTR.
+        for (id in listOf("aescbc", "aesctr")) {
+            val payload = enc(id, text, mapOf("password" to password, "keySize" to "128"))
+            val error = failure(id, payload, mapOf("password" to password, "keySize" to "256"), Direction.DECODE)
+            assertTrue("$id said: $error", error.contains("128-bit"))
+            assertEquals(text, dec(id, payload, mapOf("password" to password, "keySize" to "128")))
+        }
+    }
+
+    @Test fun theKeySizeIsRecordedForModernPayloadsAndLegacyOnesStillRead() {
+        // Modern payloads carry the key size in the KDF id, so no guessing is needed.
+        val payload = enc("aes", "recorded", mapOf("password" to password, "keySize" to "256"))
+        val raw = com.texthub.core.codec.Base64Codec.decode(payload)
+        assertEquals("version", 0x01.toByte(), raw[0])
+        assertEquals("kdf id records a 256-bit key", 0x02.toByte(), raw[1])
+
+        // A payload written before the key size was recorded (KDF id 0x01) stays readable, and the
+        // app still tells the user which size it really uses instead of silently accepting 256.
+        val legacy = AesGcmPayload.encrypt("legacy message", password.toCharArray(), 32, prefixKeySizeInPayload = false)
+        assertEquals(0x01.toByte(), com.texthub.core.codec.Base64Codec.decode(legacy)[1])
+        assertEquals("legacy message", dec("aes", legacy, mapOf("password" to password, "keySize" to "256")))
+        assertEquals(32, AesGcmPayload.keySizeOf(legacy, password.toCharArray())!!)
     }
 
     @Test fun thereIsExactlyOneAesToolPerMode() {
@@ -70,8 +96,9 @@ class SecureToolsTest {
     @Test fun generalCbcToolRoundTripsAtEveryKeySizeAndVerifiesTheTag() {
         val text = "CBC with a key-size setting 🔐"
         for (bits in listOf(128, 192, 256)) {
-            val payload = enc("aescbc", text, mapOf("password" to password, "keySize" to bits.toString()))
-            assertEquals("size $bits", text, dec("aescbc", payload, mapOf("password" to password)))
+            val params = mapOf("password" to password, "keySize" to bits.toString())
+            val payload = enc("aescbc", text, params)
+            assertEquals("size $bits", text, dec("aescbc", payload, params))
         }
         val payload = enc("aescbc", "tamper me", mapOf("password" to password, "keySize" to "256"))
         val tampered = payload.mapIndexed { i, c -> if (i == 40) (if (c == 'A') 'B' else 'A') else c }.joinToString("")
@@ -98,7 +125,7 @@ class SecureToolsTest {
         for (size in listOf("128", "192", "256")) {
             val params = mapOf("password" to password, "keySize" to size)
             val payload = enc("aesctr", text, params)
-            assertEquals("size $size", text, dec("aesctr", payload, mapOf("password" to password)))
+            assertEquals("size $size", text, dec("aesctr", payload, params))
             assertEquals(size.toInt() / 8, AesCtrHmac.keySizeOf(payload, password.toCharArray())!!)
         }
     }
@@ -148,14 +175,14 @@ class SecureToolsTest {
                 Direction.DECODE,
             ).isNotEmpty()
         )
-        // Wrong length is reported as a key problem, not as a decryption failure.
+        // A key of the wrong size for this message is named explicitly.
         val wrongLength = failure(
             "aesrawkey",
             payload16,
             mapOf("key" to com.texthub.core.codec.Base64Codec.encode(key32)),
             Direction.DECODE,
         )
-        assertTrue(wrongLength.contains("usable AES key"))
+        assertTrue("said: $wrongLength", wrongLength.contains("128-bit") && wrongLength.contains("256 bits"))
         // A 15-byte key is refused before anything is encrypted.
         val short = failure("aesrawkey", "text", mapOf("key" to "0123456789abcdef0123456789abcd"), Direction.ENCODE)
         assertTrue(short.contains("usable AES key"))
@@ -183,6 +210,13 @@ class SecureToolsTest {
         val payload = enc("rsa", "secret", mapOf("key" to pair))
         val otherPair = RsaKeyGen.generate(2048)
         assertTrue(failure("rsa", payload, mapOf("key" to otherPair), Direction.DECODE).contains("private key"))
+        // A private key of another size is refused by name instead of a generic failure.
+        val smallPair = RsaKeyGen.generate(3072)
+        val wrongSize = enc("rsa", "secret", mapOf("key" to smallPair))
+        assertTrue(
+            failure("rsa", wrongSize, mapOf("key" to pair), Direction.DECODE)
+                .contains("3072-bit RSA key"),
+        )
         val tampered = payload.dropLast(6) + "AAAAAA"
         assertTrue(failure("rsa", tampered, mapOf("key" to pair), Direction.DECODE).isNotEmpty())
         assertTrue(failure("rsa", "not-a-payload", mapOf("key" to pair), Direction.DECODE).contains("RSA message"))

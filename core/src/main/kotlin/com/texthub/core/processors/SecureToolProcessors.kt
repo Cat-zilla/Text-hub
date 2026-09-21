@@ -42,7 +42,8 @@ class AesCtrProcessor : TextProcessor {
                     Choice("192", "AES-192"),
                     Choice("128", "AES-128"),
                 ),
-                helper = "The MAC key is always 256 bits and never derived from the AES key.",
+                helper = "The MAC key is always 256 bits and never derived from the AES key. The " +
+                    "key size is recorded in the message and must match on decrypt.",
             ),
             passwordSpec("Use AES-GCM unless a system you talk to expects CTR."),
         ),
@@ -72,9 +73,18 @@ class AesCtrProcessor : TextProcessor {
         return try {
             if (direction == Direction.ENCODE) {
                 if (input.isEmpty()) throw Errors.emptyInput()
-                AesCtrHmac.encrypt(input, password, keySizeBytes = keySizeOf(params))
+                AesCtrHmac.encrypt(
+                    plaintext = input,
+                    password = password,
+                    keySizeBytes = keySizeOf(params),
+                    prefixKeySizeInPayload = true,
+                )
             } else {
-                AesCtrHmac.decrypt(input.trim(), password)
+                AesCtrHmac.decrypt(
+                    payloadBase64 = input.trim(),
+                    password = password,
+                    expectedKeySizeBytes = keySizeOf(params),
+                )
             }
         } finally {
             password.fill('\u0000')

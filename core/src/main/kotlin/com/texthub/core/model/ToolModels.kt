@@ -98,8 +98,16 @@ data class ToolMeta(
      */
     val inputOptional: Boolean = false,
 ) {
+    /**
+     * Everything the search box matches against: the tool name, its **id** (so typing `utf16`,
+     * `aescbc` or `railfence` finds the tool), a punctuation-free spelling of the name (so
+     * `rail fence` and `railfence` both work), the classification, the category and the keywords.
+     */
     val searchIndex: String =
-        (listOf(name, classification.label, category.label) + keywords).joinToString(" ").lowercase()
+        (
+            listOf(name, id, name.replace(Regex("[^A-Za-z0-9]+"), ""), classification.label, category.label) +
+                keywords
+            ).joinToString(" ").lowercase()
 }
 
 /** Result of a processing request. Never contains secrets beyond what the user typed. */

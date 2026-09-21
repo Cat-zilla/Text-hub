@@ -39,7 +39,8 @@ class AesCbcProcessor : TextProcessor {
                     Choice("192", "AES-192"),
                     Choice("128", "AES-128"),
                 ),
-                helper = "The MAC key is always 256 bits and is never derived from the AES key.",
+                helper = "The MAC key is always 256 bits and is never derived from the AES key. " +
+                    "The key size is recorded in the message and must match on decrypt.",
             ),
             ParamSpec(
                 key = "password",
@@ -64,7 +65,8 @@ class AesCbcProcessor : TextProcessor {
                 "Use AES-GCM unless you specifically need CBC compatibility.",
                 "Losing the password makes the data unrecoverable - there is no backdoor.",
             ),
-            convention = "Payload: version + KDF id + salt + IV + ciphertext + HMAC tag, Base64 encoded.",
+            convention = "Payload: version + KDF id + salt + IV + ciphertext + HMAC tag, Base64 " +
+                "encoded. The KDF id records the key size, so decryption knows which key to build.",
         ),
         keywords = listOf("aes", "cbc", "hmac", "encrypt", "authenticated"),
     )
@@ -75,9 +77,18 @@ class AesCbcProcessor : TextProcessor {
         try {
             return if (direction == Direction.ENCODE) {
                 if (input.isEmpty()) throw Errors.emptyInput()
-                AesCbcHmac.encrypt(input, password, keySizeBytes = keySizeOf(params))
+                AesCbcHmac.encrypt(
+                    plaintext = input,
+                    password = password,
+                    keySizeBytes = keySizeOf(params),
+                    prefixKeySizeInPayload = true,
+                )
             } else {
-                AesCbcHmac.decrypt(input.trim(), password)
+                AesCbcHmac.decrypt(
+                    payloadBase64 = input.trim(),
+                    password = password,
+                    expectedKeySizeBytes = keySizeOf(params),
+                )
             }
         } finally {
             password.fill('\u0000')

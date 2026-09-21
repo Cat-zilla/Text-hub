@@ -101,7 +101,8 @@ class AesGcmTest {
     @Test fun payloadStructureIsDocumented() {
         val payload = Base64Codec.decode(encrypt("hello", "pw"))
         assertEquals(0x01.toByte(), payload[0]) // version
-        assertEquals(0x01.toByte(), payload[1]) // KDF id: PBKDF2-HMAC-SHA256
+        // KDF id: 0x02 records the 256-bit key size introduced in 1.4.2 (0x01 = legacy).
+        assertEquals(0x02.toByte(), payload[1])
         // 2 header + 16 salt + 12 IV + 5 bytes plaintext + 16 byte GCM tag
         assertEquals(2 + 16 + 12 + 5 + 16, payload.size)
     }

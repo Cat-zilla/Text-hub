@@ -41,17 +41,23 @@ class NewTools2Test {
     @Test fun aesGcmAllKeySizes() {
         val text = "AES key size round trip 🎯"
         for (size in listOf("128", "192", "256")) {
-            val payload = enc("aes", text, mapOf("password" to "correct horse", "keySize" to size))
-            assertEquals("size $size", text, dec("aes", payload, mapOf("password" to "correct horse")))
+            val params = mapOf("password" to "correct horse", "keySize" to size)
+            val payload = enc("aes", text, params)
+            assertEquals("size $size", text, dec("aes", payload, params))
         }
     }
 
-    @Test fun aesGcmPayloadDoesNotNeedTheKeySizeToDecrypt() {
-        // The key size is not stored, so decryption tries each size - which keeps old payloads
-        // readable and means the user never has to remember the setting.
-        val payload = enc("aes", "legacy payload", mapOf("password" to "pw", "keySize" to "128"))
-        assertEquals("legacy payload", dec("aes", payload, mapOf("password" to "pw")))
-        assertEquals("legacy payload", dec("aes", payload, mapOf("password" to "pw", "keySize" to "256")))
+    @Test fun theKeySizeSettingIsHonouredOnDecrypt() {
+        // Since 1.4.2 the payload records the key size, and decrypting with another setting is
+        // refused with a message that names the size the message actually needs.
+        val payload = enc("aes", "strict payload", mapOf("password" to "pw", "keySize" to "128"))
+        assertEquals("strict payload", dec("aes", payload, mapOf("password" to "pw", "keySize" to "128")))
+        val error = runCatching {
+            ToolRegistry.get("aes").process(payload, ToolRegistry.get("aes").defaultParams() +
+                mapOf("password" to "pw", "keySize" to "256"), Direction.DECODE)
+        }.exceptionOrNull()
+        assertTrue(error is ToolException)
+        assertTrue(error!!.message!!.contains("128-bit"))
     }
 
     @Test fun aesGcmKeySizesAreReportedAndDistinct() {
@@ -68,15 +74,22 @@ class NewTools2Test {
     @Test fun aesCbcAllKeySizesAndTamperDetection() {
         val text = "CBC with a selectable key size"
         for (size in listOf("128", "192", "256")) {
-            val payload = enc("aescbc", text, mapOf("password" to "pw", "keySize" to size))
-            assertEquals(size, text, dec("aescbc", payload, mapOf("password" to "pw")))
+            val params = mapOf("password" to "pw", "keySize" to size)
+            val payload = enc("aescbc", text, params)
+            // The key size must match on the way back (1.4.2 policy).
+            assertEquals(size, text, dec("aescbc", payload, params))
         }
-        val payload = enc("aescbc", text, mapOf("password" to "pw", "keySize" to "128"))
+        val params128 = mapOf("password" to "pw", "keySize" to "128")
+        val payload = enc("aescbc", text, params128)
         assertEquals(16, AesCbcHmac.keySizeOf(payload, "pw".toCharArray()))
+        val mismatch = runCatching {
+            dec("aescbc", payload, mapOf("password" to "pw", "keySize" to "256"))
+        }.exceptionOrNull()
+        assertTrue(mismatch is ToolException && mismatch.message!!.contains("128-bit"))
         val bytes = com.texthub.core.codec.Base64Codec.decode(payload)
         val tampered = bytes.copyOf().also { it[40] = (it[40] + 1).toByte() }
         assertTrue(runCatching {
-            dec("aescbc", com.texthub.core.codec.Base64Codec.encode(tampered), mapOf("password" to "pw"))
+            dec("aescbc", com.texthub.core.codec.Base64Codec.encode(tampered), params128)
         }.exceptionOrNull() is ToolException)
         assertNull(AesCbcHmac.keySizeOf(payload, "wrong".toCharArray()))
     }

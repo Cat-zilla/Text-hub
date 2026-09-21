@@ -80,5 +80,20 @@ object Errors {
     fun rsaPkcs1() = ToolException("This is an older PKCS#1 RSA key. Convert it to PKCS#8 / X.509 first, or generate a fresh pair with the RSA Key Pair Generator.")
     fun rsaFormat() = ToolException("This does not look like an RSA message from this tool. Paste the complete Base64 payload.")
     fun rsaUnsupported() = ToolException("RSA-OAEP is not available on this device, so this tool cannot run here.")
+    fun aesKeySizeMismatch(declaredBits: Int) = ToolException(
+        "This message was encrypted with a $declaredBits-bit AES key, but the key size selected here is different. " +
+            "Set AES key size to $declaredBits bits and try again."
+    )
+    fun rawKeySizeMismatch(storedBits: Int, providedBits: Int) = ToolException(
+        "This message was encrypted with a $storedBits-bit AES key, but the key you pasted is $providedBits bits. " +
+            "Use a $storedBits-bit key."
+    )
+    fun rsaKeySizeMismatch(payloadBits: Int, keyBits: Int) = ToolException(
+        "This message was encrypted for a $payloadBits-bit RSA key, but the key you pasted is $keyBits bits. " +
+            "Paste the private key that belongs to the public key it was encrypted to."
+    )
+    fun natoUnsupported(chars: String) = ToolException(
+        "The spelling alphabet can only spell the 26 English letters and the digits 0-9. These characters have no word: $chars"
+    )
     fun tooLarge(limit: Int) = ToolException("Input is very large (over $limit characters). Try processing a smaller piece of text.")
 }

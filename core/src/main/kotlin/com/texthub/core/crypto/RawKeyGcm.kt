@@ -95,8 +95,8 @@ object RawKeyGcm {
         val storedLength = payload[1].toInt() and 0xFF
         if (storedLength !in KEY_SIZES) throw Errors.rawKeyFormat()
         if (storedLength != key.size) {
-            // Say which size this payload needs rather than a generic failure.
-            throw Errors.rawKey()
+            // Name both sizes instead of a generic failure.
+            throw Errors.rawKeySizeMismatch(storedLength * 8, key.size * 8)
         }
 
         val iv = payload.copyOfRange(HEADER_LEN, PREFIX_LEN)

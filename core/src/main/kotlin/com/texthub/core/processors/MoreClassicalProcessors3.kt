@@ -10,6 +10,7 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.util.asciiLetters
 import com.texthub.core.util.modInverse
 
 /** Shared modular matrix maths for the Hill ciphers (2x2 and 3x3). */
@@ -502,7 +503,7 @@ class AdfgxProcessor : TextProcessor {
         val adfgvx = params["alphabet"] != "adfgx"
         val symbols = if (adfgvx) "ADFGVX" else "ADFGX"
         val size = if (adfgvx) 6 else 5
-        val columnKey = (params["columnKey"] ?: "").filter { it.isLetter() }.uppercase()
+        val columnKey = (params["columnKey"] ?: "").asciiLetters()
         if (columnKey.isEmpty()) throw Errors.adfgxKey()
         val square = buildSquare(params["squareKey"] ?: "", adfgvx)
 

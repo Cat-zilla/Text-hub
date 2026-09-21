@@ -1,5 +1,9 @@
 package com.texthub.core.processors
 
+import com.texthub.core.util.asciiLetters
+import com.texthub.core.util.asciiLettersAndDigits
+import com.texthub.core.util.isAsciiDigit
+import com.texthub.core.util.isAsciiLetter
 import com.texthub.core.TextProcessor
 import com.texthub.core.model.Choice
 import com.texthub.core.model.Classification
@@ -305,7 +309,7 @@ class KeyedAlphabetProcessor : TextProcessor {
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
         val alphabet = (params["alphabet"] ?: "")
             .uppercase()
-            .filter { it.isLetterOrDigit() }
+            .filter { it.isAsciiLetter() || it.isAsciiDigit() }
             .toList()
             .distinct()
             .joinToString("")

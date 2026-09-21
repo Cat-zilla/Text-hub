@@ -38,8 +38,9 @@ class AesProcessor : TextProcessor {
                     Choice("192", "AES-192"),
                     Choice("128", "AES-128"),
                 ),
-                helper = "All three are authenticated; the key size is remembered in the payload " +
-                    "implicitly, so any of them can be decrypted later.",
+                helper = "All three are authenticated. The key size is recorded in the message, and " +
+                    "decrypting with a different setting is refused - the message tells you which " +
+                    "size it needs.",
             ),
             ParamSpec(
                 key = "password",
@@ -66,8 +67,9 @@ class AesProcessor : TextProcessor {
                 "The encrypted output contains everything needed to decrypt it except the password.",
             ),
             convention = "Payload: version + KDF id + salt + IV + ciphertext (with GCM tag), " +
-                "Base64 encoded. The key size is tried on decrypt, so AES-128/192/256 payloads all " +
-                "read back without a setting to remember.",
+                "Base64 encoded. The KDF id records the key size, so decryption uses exactly that " +
+                "size: the Key size setting must match the message or the tool says which size to " +
+                "choose.",
         ),
         keywords = listOf("aes", "aes128", "aes192", "aes256", "gcm", "encrypt", "secure", "password", "authenticated"),
     )
@@ -78,9 +80,18 @@ class AesProcessor : TextProcessor {
         return try {
             if (direction == Direction.ENCODE) {
                 if (input.isEmpty()) throw Errors.emptyInput()
-                AesGcmPayload.encrypt(input, password, keySizeBytes = keySizeOf(params))
+                AesGcmPayload.encrypt(
+                    plaintext = input,
+                    password = password,
+                    keySizeBytes = keySizeOf(params),
+                    prefixKeySizeInPayload = true,
+                )
             } else {
-                AesGcmPayload.decrypt(input.trim(), password)
+                AesGcmPayload.decrypt(
+                    payloadBase64 = input.trim(),
+                    password = password,
+                    expectedKeySizeBytes = keySizeOf(params),
+                )
             }
         } finally {
             password.fill('\u0000')

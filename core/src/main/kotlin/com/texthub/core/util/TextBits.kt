@@ -106,3 +106,20 @@ fun modInverse(a: Int, m: Int): Int? {
     if (r != 1) return null
     return t.modPositive(m)
 }
+
+/**
+ * ASCII-only helpers.
+ *
+ * Character classification must never use [Char.isLetter] / [Char.isDigit] where the result is used
+ * as an index into an A–Z or 0–9 table: those functions are true for `ü`, `न`, `٣` and thousands of
+ * other characters, which would index far outside the table.
+ */
+fun Char.isAsciiLetter(): Boolean = this in 'a'..'z' || this in 'A'..'Z'
+
+fun Char.isAsciiDigit(): Boolean = this in '0'..'9'
+
+/** Keeps ASCII letters only, uppercased: the form every classical cipher key needs. */
+fun String.asciiLetters(): String = filter { it.isAsciiLetter() }.uppercase()
+
+/** Keeps ASCII letters and digits, uppercased (keys for the alphanumeric Playfair/ADFGX grids). */
+fun String.asciiLettersAndDigits(): String = filter { it.isAsciiLetter() || it.isAsciiDigit() }.uppercase()

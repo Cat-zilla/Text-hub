@@ -8,12 +8,15 @@ import com.texthub.core.codec.UnicodeEscapeCodec
 import com.texthub.core.model.Choice
 import com.texthub.core.model.Classification
 import com.texthub.core.model.Direction
+import com.texthub.core.model.Errors
 import com.texthub.core.model.ParamKind
 import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolException
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.util.isAsciiDigit
+import com.texthub.core.util.isAsciiLetter
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
 
@@ -208,13 +211,18 @@ class NatoPhoneticProcessor : TextProcessor {
         val table = if (params["alphabet"] == "old") OLD else NATO
         if (direction == Direction.ENCODE) {
             val words = ArrayList<String>()
+            val unsupported = StringBuilder()
             for (ch in input) {
                 when {
-                    ch.isLetter() -> words.add(table[ch.uppercaseChar() - 'A'])
-                    ch.isDigit() -> words.add(DIGITS[ch - '0'])
+                    // Only ASCII A-Z maps to the table: Char.isLetter() would also accept ü, न, ٣
+                    // and index far outside the 26 entries.
+                    ch.isAsciiLetter() -> words.add(table[ch.uppercaseChar() - 'A'])
+                    ch.isAsciiDigit() -> words.add(DIGITS[ch - '0'])
                     ch.isWhitespace() -> words.add("/")
+                    ch.isLetterOrDigit() -> if (!unsupported.contains(ch)) unsupported.append(ch)
                 }
             }
+            if (unsupported.isNotEmpty()) throw Errors.natoUnsupported(unsupported.toString())
             return words.joinToString(" ")
         }
         val reverse = table.withIndex().associate { (i, word) -> word.lowercase() to ('A'.code + i).toChar() }

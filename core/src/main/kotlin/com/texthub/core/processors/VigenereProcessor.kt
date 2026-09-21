@@ -1,5 +1,9 @@
 package com.texthub.core.processors
 
+import com.texthub.core.util.asciiLetters
+import com.texthub.core.util.asciiLettersAndDigits
+import com.texthub.core.util.isAsciiDigit
+import com.texthub.core.util.isAsciiLetter
 import com.texthub.core.TextProcessor
 import com.texthub.core.model.Classification
 import com.texthub.core.model.Direction
@@ -54,7 +58,8 @@ class VigenereProcessor : TextProcessor {
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
-        val key = (params["key"] ?: "").filter { it.isLetter() }.uppercase()
+        // ASCII letters only: a non-ASCII letter has no place in an A-Z table.
+        val key = (params["key"] ?: "").asciiLetters()
         if (key.isEmpty()) throw Errors.missingKey()
         val shifts = key.map { it - 'A' }
         var keyIndex = 0

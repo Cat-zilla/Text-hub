@@ -1,5 +1,9 @@
 package com.texthub.core.processors
 
+import com.texthub.core.util.asciiLetters
+import com.texthub.core.util.asciiLettersAndDigits
+import com.texthub.core.util.isAsciiDigit
+import com.texthub.core.util.isAsciiLetter
 import com.texthub.core.TextProcessor
 import com.texthub.core.model.Choice
 import com.texthub.core.model.Classification
@@ -76,10 +80,10 @@ class PlayfairProcessor : TextProcessor {
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
-        val key = (params["key"] ?: "").uppercase().filter { it.isLetter() || it.isDigit() }
+        val key = (params["key"] ?: "").asciiLettersAndDigits()
         if (key.isEmpty()) throw Errors.playfair()
         val alnum = params["grid"] == "alnum"
-        val fillerRaw = (params["filler"] ?: "X").uppercase().filter { it.isLetter() }
+        val fillerRaw = (params["filler"] ?: "X").asciiLetters()
         val filler = fillerRaw.firstOrNull() ?: throw Errors.playfair()
         val square = buildSquare(key, alnum)
         val size = if (alnum) 6 else 5

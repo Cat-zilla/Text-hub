@@ -331,7 +331,7 @@ class NewToolsTest {
     @Test fun aesCbcPayloadLayout() {
         val payload = com.texthub.core.codec.Base64Codec.decode(enc("aescbc", "hello", mapOf("password" to "pw")))
         assertEquals(0x02.toByte(), payload[0])
-        assertEquals(0x01.toByte(), payload[1])
+        assertEquals(0x02.toByte(), payload[1]) // KDF id: 256-bit key recorded
         // 2 + 16 salt + 16 IV + 16 bytes (5 plaintext padded to a block) + 32 byte tag
         assertEquals(2 + 16 + 16 + 16 + 32, payload.size)
     }

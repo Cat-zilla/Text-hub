@@ -167,6 +167,18 @@ object RsaHybrid {
         val wrappedLength = ((payload[2].toInt() and 0xFF) shl 8) or (payload[3].toInt() and 0xFF)
         if (wrappedLength <= 0 || HEADER_LEN + wrappedLength + IV_LEN + 16 > payload.size) throw Errors.rsaFormat()
 
+        // A private key of another size can never open this message: say so plainly.
+        val keyBits = (privateKey as? java.security.interfaces.RSAPrivateKey)?.modulus?.bitLength()
+        val payloadBits = when (wrappedLength) {
+            256 -> 2048
+            384 -> 3072
+            512 -> 4096
+            else -> null
+        }
+        if (keyBits != null && payloadBits != null && keyBits != payloadBits) {
+            throw Errors.rsaKeySizeMismatch(payloadBits, keyBits)
+        }
+
         val wrapped = payload.copyOfRange(HEADER_LEN, HEADER_LEN + wrappedLength)
         val iv = payload.copyOfRange(HEADER_LEN + wrappedLength, HEADER_LEN + wrappedLength + IV_LEN)
         val ciphertext = payload.copyOfRange(HEADER_LEN + wrappedLength + IV_LEN, payload.size)
