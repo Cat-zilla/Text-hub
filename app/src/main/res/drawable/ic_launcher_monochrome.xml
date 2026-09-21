@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon layer (Android 13+): one colour, with the text lines punched out of the lock body
+  using the even-odd fill rule, so the system can tint the whole mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M39,52 A15,15 0 0 1 69,52 L63,52 A9,9 0 0 0 45,52 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M41,48 h26 a9,9 0 0 1 9,9 v16 a9,9 0 0 1 -9,9 h-26 a9,9 0 0 1 -9,-9 v-16 a9,9 0 0 1 9,-9 z M41,57 h22 v4 h-22 z M41,65 h16 v4 h-16 z M41,73 h22 v4 h-22 z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

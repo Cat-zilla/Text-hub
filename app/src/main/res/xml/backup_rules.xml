@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only harmless UI preferences are included in a device backup.
+  No text, no keys, no passwords are ever written to storage by Text Hub.
+-->
+<full-backup-content>
+    <include
+        domain="sharedpref"
+        path="texthub_preferences.xml" />
+</full-backup-content>
