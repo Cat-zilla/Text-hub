@@ -26,33 +26,6 @@ Encode • Decode • Transform
 
 ---
 
-## What's new in 1.4.2
-
-**Fixed: the AES Key size setting is now honoured on decryption.** Previously an AES-128 message
-decrypted with the AES-256 setting (and any other combination) succeeded, because the setting was
-only read when encrypting and decryption guessed the key size. Encryption now records the size in
-the payload's `kdfId` byte (`0x02` = 256-bit; `0x01` remains "legacy, size not recorded") and
-decryption derives exactly that key. A mismatch is **refused** with a sentence that names the size
-the message needs, so changing the setting can never silently succeed. Messages written by
-1.3.0–1.4.1 still decrypt, and report which size they actually use.
-
-**The whole toolset was audited (all 73 tools).** The audit added in this round found and fixed
-three real defects, and two documentation ones:
-
-| Found | Fix |
-| --- | --- |
-| *Spelling alphabet* crashed with an `ArrayIndexOutOfBoundsException` on any non-ASCII letter or digit (`Grüße`, `नमस्ते`, `٣`): it used `Char.isLetter()`, which is true for thousands of characters, to index a 26-entry table | Only ASCII `A–Z`/`0–9` are spelled; anything else is refused with a friendly sentence that lists the characters it cannot spell |
-| Sixteen tools could not be found by typing their own id (`utf16`, `railfence`, `aescbc`, `textdiff`, …) because ids were missing from the search index | The search index now contains every id plus a punctuation-free spelling of the name, so `railfence` *and* `rail fence` both work |
-| A non-ASCII letter in a cipher key was silently turned into a bogus A–Z shift (Vigenère, Beaufort, Autokey, Playfair, ADFGX, custom alphabets) | Keys are filtered to ASCII letters (and digits where the alphabet has them), so no invalid index can be produced |
-| The reference and README called two tools by names the app never uses | Documentation now matches the registry exactly, and a test enforces it |
-
-New regression tests lock all of this down: `ToolAuditTest` sweeps every tool's parameters,
-defaults, sensitive flags, behaviour on ten unusual inputs in both directions, searchability by id
-and name, claim discipline, error friendliness and key-size enforcement; `ToolAuditReportTest`
-writes `core/build/tool-audit.txt`, a per-tool report of the whole registry. Test total: **260**.
-
----
-
 ## Table of contents
 
 1. [Feature overview](#1-feature-overview)
