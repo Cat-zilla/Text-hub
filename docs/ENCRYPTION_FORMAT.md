@@ -24,7 +24,7 @@ existing header fields.
 | Offset | Size | Field | Value |
 | --- | --- | --- | --- |
 | 0 | 1 | `version` | `0x01` |
-| 1 | 1 | `kdfId` | `0x01` = PBKDF2-HMAC-SHA256, 210 000 iterations; key length follows the chosen AES key size (the key size itself is **not** stored — see §3.1) |
+| 1 | 1 | `kdfId` | `0x02` = PBKDF2-HMAC-SHA256, 210 000 iterations, 256-bit key · `0x01` = legacy, key size not recorded (see §3.1) |
 | 2 | 16 | `salt` | random |
 | 18 | 12 | `iv` | random nonce for GCM |
 | 30 | n | `ciphertext` | ciphertext followed by the 16-byte GCM authentication tag |
@@ -74,27 +74,41 @@ Any `GeneralSecurityException` (wrong password, modified ciphertext, modified IV
 payload) is reported as: *"Unable to decrypt. The password or encrypted data may be incorrect."*
 Deliberately identical for all failure modes, so the error does not leak which part failed.
 
-### 3.1 Key size (added in version 1.3.0)
+### 3.1 Key size (added in 1.3.0, made explicit in 1.4.2)
 
 The key-size setting (AES-128, AES-192, AES-256) selects how many PBKDF2 bytes are used as the AES
-key. It is deliberately **not** written into the payload:
+key:
 
 ```
 key = PBKDF2-HMAC-SHA256(password, salt, 210000, 16 | 24 | 32 bytes)
 ```
 
-* The payload layout is unchanged, so every `version = 0x01` payload written by earlier versions of
-  the app still decrypts.
-* On decrypt the tool derives a key of each supported length (32, 24, then 16 bytes, most likely
-  first) and lets the GCM tag decide: only the correct key length authenticates. This is the same
-  trick that makes a wrong password fail — the tag check is the arbiter, and it costs at most three
-  PBKDF2 derivations (with a 100 ms+ KDF this stays well under a second on a phone).
-* The 16/24/32-byte outputs are prefixes of one another, so no additional KDF work is needed beyond
-  the longest derivation in practice; the implementation derives per length for clarity.
-* `keySizeOf()` on the processor reports which length a payload actually needs, so the information
-  sheet can state the key size of the last operation.
-* The same rule applies to AES-CBC + HMAC (§6.1): the PBKDF2 output is the AES key of the chosen
-  length followed by a separate 32-byte HMAC key.
+**The size is recorded in the `kdfId` byte**, which is what that field was reserved for. The
+payload layout is unchanged — same version byte, same offsets:
+
+| `kdfId` | Meaning |
+| --- | --- |
+| `0x01` | PBKDF2-HMAC-SHA256, 210 000 iterations — *legacy*: the key size was not recorded (written by 1.3.0–1.4.1) |
+| `0x02` | PBKDF2-HMAC-SHA256, 210 000 iterations, **256-bit key** (written by 1.4.2 and later) |
+
+Rules the implementation follows:
+
+* **Decrypting uses exactly the recorded size.** It does not "try every key size" any more: if the
+  KDF id says 256-bit, one key is derived and either the tag authenticates or the operation fails.
+* **The Key size setting must match the message.** If it does not, the operation is refused with a
+  message naming the size the message actually needs (*"This message was encrypted with a 128-bit
+  AES key, but the key size selected here is different…"*). This is the behaviour users expect:
+  changing the setting must not silently succeed.
+* **Legacy payloads (`kdfId = 0x01`) stay readable.** They recorded nothing, so the size is
+  detected from the authentication tag (256 first). If detection finds a size other than the
+  selected setting, the same "select size X" message is shown instead of quietly decrypting — the
+  user is told what to set, so no payload becomes unreadable.
+* `keySizeOf()` returns the size a payload needs (recorded, or detected for legacy payloads).
+* The same rule applies to AES-CBC + HMAC (§6.1) and AES-CTR + HMAC (§6.3), where the PBKDF2 output
+  is `keyLength + 32` bytes: the AES key first, then an independent 32-byte MAC key.
+* Payloads written *by this document's earlier builds* (1.4.0/1.4.1, including the short-lived
+  AES-128/192/256 tools) are `kdfId = 0x01` and therefore still decrypt — but the app will tell the
+  user which key size to select when the setting is wrong, rather than guessing silently.
 
 ## 4. Validation rules on decrypt
 
@@ -106,6 +120,9 @@ key = PBKDF2-HMAC-SHA256(password, salt, 210000, 16 | 24 | 32 bytes)
 
 ## 5. Properties guaranteed by tests (for AES-GCM and the two payloads in section 6)
 
+* A payload written with one key size is refused by the other sizes with a message naming the
+  correct one (AES-GCM, AES-CBC + HMAC and AES-CTR + HMAC are all covered).
+* Legacy payloads (`kdfId = 0x01`) still decrypt, and report the size they actually use.
 * Encrypting the same plaintext twice with the same password produces **different** payloads
   (different salt *and* different IV), and both decrypt correctly.
 * Decryption with a wrong password fails.
@@ -227,8 +244,9 @@ bytes k+12..n  ciphertext     AES-GCM ciphertext followed by the 16-byte tag
 * The `kdfId` byte is where KDF parameters live. If the iteration count changes, add a new
   `kdfId` value; do not change the count behind `0x01`.
 * Never reuse an (key, IV) pair: always draw a fresh 12-byte IV per message.
-* Never add a key-size field to `version = 0x01`: the size is inferred from the tag check, so an
-  old payload and a new payload differ only in the length of the derived key.
+* The key size lives in the `kdfId` byte, never in a new field: `0x02` means "256-bit key" and any
+  future size gets its own value (for example `0x03` for a 128-bit key if the app ever needs to
+  write one).
 * Never store, transmit or log the password, the derived key, or the plaintext.
 
 ## 8. What Text Hub will never do

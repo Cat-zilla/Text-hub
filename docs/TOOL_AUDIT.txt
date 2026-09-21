@@ -1,0 +1,81 @@
+Text Hub tool audit — 73 tools
+documented + findable: 73/73
+------------------------------------------------------------------------------------------------------------------------
+aes              SECURE    rt=-    err=Please enter a password before processin
+aescbc           SECURE    rt=-    err=Please enter a password before processin
+chacha           SECURE    rt=-    err=Please enter a password before processin
+aesctr           SECURE    rt=-    err=Please enter a password before processin
+aesrawkey        SECURE    rt=-    err=Please enter a key before processing.
+rsa              SECURE    rt=-    err=Encrypting needs the recipient's public 
+rsakeygen        SECURE    rt=-    out=-----BEGIN PUBLIC KEY-----
+M
+hash             CRYPTO    rt=-    out=2cf24dba5fb0a30e26e83b2ac5b9
+hmac             CRYPTO    rt=-    err=Please enter a key before processing.
+pbkdf2           CRYPTO    rt=-    err=Please enter a password before processin
+checksum         CRYPTO    rt=-    out=decimal: 907060870
+hex:     
+caesar           CLASSICAL rt=yes  out=khoor
+vigenere         CLASSICAL rt=-    err=Please enter a key before processing.
+atbash           CLASSICAL rt=yes  out=svool
+substitution     CLASSICAL rt=yes  out=itssg
+rot13            CLASSICAL rt=yes  out=uryyb
+rot47            CLASSICAL rt=yes  out=96==@
+rot18            CLASSICAL rt=yes  out=uryyb
+affine           CLASSICAL rt=yes  out=rclla
+playfair         CLASSICAL rt=-    err=Playfair requires a key with at least on
+railfence        CLASSICAL rt=yes  out=hoell
+columnar         CLASSICAL rt=-    err=Columnar transposition requires a key wi
+bacon            CLASSICAL rt=-    out=AABBB AABAA ABABB ABABB ABBB
+a1z26            CLASSICAL rt=-    out=8-5-12-12-15
+beaufort         CLASSICAL rt=-    err=Please enter a key before processing.
+autokey          CLASSICAL rt=-    err=Please enter a key before processing.
+gronsfeld        CLASSICAL rt=yes  out=kfpmt
+hill             CLASSICAL rt=-    out=DRJIWR
+bifid            CLASSICAL rt=-    out=FNNVD
+polybius         CLASSICAL rt=-    out=23 15 31 31 34
+caesarbrute      CLASSICAL rt=-    out= 1: gdkkn
+ 2: fcjjm
+ 3: ebii
+hill3            CLASSICAL rt=-    out=TFJJZX
+porta            CLASSICAL rt=yes  out=oytub
+trifid           CLASSICAL rt=-    out=BOJN.
+scytale          CLASSICAL rt=yes  out=hleol
+adfgx            CLASSICAL rt=-    out=AAFGGAAXDG
+enigma           CLASSICAL rt=yes  out=ilbda
+vigenere2        CLASSICAL rt=-    err=Please enter a key before processing.
+base64           ENCODING  rt=yes  out=aGVsbG8=
+base32           ENCODING  rt=yes  out=NBSWY3DP
+base58           ENCODING  rt=yes  out=Cn8eVZg
+base85           ENCODING  rt=yes  out=BOu!rDZ
+url              ENCODING  rt=yes  out=hello
+hex              ENCODING  rt=yes  out=68 65 6C 6C 6F
+binary           ENCODING  rt=yes  out=01101000 01100101 01101100 0
+ascii            ENCODING  rt=yes  out=104 101 108 108 111
+decimal          ENCODING  rt=yes  out=104 101 108 108 111
+octal            ENCODING  rt=yes  out=150 145 154 154 157
+unicode          ENCODING  rt=yes  out=U+0068 U+0065 U+006C U+006C 
+morse            ENCODING  rt=-    out=.... . .-.. .-.. ---
+baudot           ENCODING  rt=-    out=10100 00001 10010 10010 1100
+base45           ENCODING  rt=yes  out=+8D VDL2
+quotedprintable  ENCODING  rt=yes  out=hello
+htmlentities     ENCODING  rt=yes  out=hello
+unicodeescape    ENCODING  rt=yes  out=hello
+nato             ENCODING  rt=-    out=Hotel Echo Lima Lima Oscar
+base91           ENCODING  rt=yes  out=TPwJh;A
+punycode         ENCODING  rt=yes  out=hello-
+braille          ENCODING  rt=yes  out=⠀⠀⠆⠈⠀⠀⠆⠅⠀⠀⠆⠌⠀⠀⠆⠌⠀⠀⠆⠏
+roman            ENCODING  rt=yes  out=hello
+utf16            ENCODING  rt=yes  out=0068 0065 006C 006C 006F
+utf32            ENCODING  rt=yes  out=00000068 00000065 0000006C 0
+hexdump          ENCODING  rt=yes  out=00000000: 68 65 6c 6c 6f    
+reverse          TRANSFORM rt=yes  out=olleh
+case             TRANSFORM rt=-    out=HELLO
+linetools        TRANSFORM rt=yes  out=hello
+leet             TRANSFORM rt=yes  out=h3ll0
+json             TRANSFORM rt=-    err=Unexpected character 'h' at line 1, colu
+regex            TRANSFORM rt=-    out=1 match
+1: hello
+textdiff         TRANSFORM rt=-    err=Add a separator line containing "---" be
+textstats        TRANSFORM rt=-    out=Characters (UTF-16 units): 5
+jwt              TRANSFORM rt=-    err=This does not look like a JWT. Expected 
+xor              TRANSFORM rt=-    err=Please enter a key before processing.

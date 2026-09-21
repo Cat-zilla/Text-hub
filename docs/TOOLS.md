@@ -10,14 +10,14 @@ authentication code · `CKSUM` checksum (integrity only) · `KEYGEN` key materia
 
 | Tool | Class | Key | Parameters |
 | --- | --- | --- | --- |
-| AES-GCM Encryption | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256) |
-| AES-CBC + HMAC | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256) |
+| AES-GCM Encryption | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256); the size is recorded in the message and must match on decrypt |
+| AES-CBC + HMAC | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256); recorded in the message, enforced on decrypt |
 | ChaCha20-Poly1305 | SEC | Password | – (Android 9+; 256-bit key) |
-| AES-CTR + HMAC | SEC | Password | Key size 128 / 192 / 256; random counter block per message |
+| AES-CTR + HMAC | SEC | Password | Key size 128 / 192 / 256 (recorded and enforced); random counter block per message |
 | AES-GCM with your own key | SEC | Raw key | Key pasted as Base64 or hex (16, 24 or 32 bytes); no key derivation |
 | RSA-OAEP + AES-GCM | SEC | RSA key (PEM) | Public key to encrypt, private key to decrypt; hybrid, any text length |
 | RSA Key Pair Generator | KEYGEN | – | 2048 / 3072 / 4096 bits; prints both PEM blocks and a fingerprint |
-| Hash (MD5 / SHA-1 / SHA-256 / SHA-512) | HASH | – | Algorithm, output format (hex, HEX, Base64); optional expected digest to verify against |
+| Hash (one-way) | HASH | – | Algorithm, output format (hex, HEX, Base64); optional expected digest to verify against |
 | HMAC (SHA-1 / SHA-256 / SHA-512) | MAC | Secret key | Algorithm, tag format, message to verify the tag against |
 | PBKDF2 Password Hash | HASH | Password | Algorithm (SHA-1 / SHA-256 / SHA-512); 210 000 iterations, 16-byte random salt |
 | Checksum (CRC-32 / Adler-32) | CKSUM | – | Kind, output format (hex / decimal), optional expected value to verify against |
@@ -55,7 +55,7 @@ authentication code · `CKSUM` checksum (integrity only) · `KEYGEN` key materia
 | Text Diff | TRF | – | Two versions separated by a separator line; case sensitivity; reports unchanged, removed and added lines |
 | Text Statistics | TRF | – | Characters, UTF-16 units, code points, UTF-8 bytes, words, unique words, sentences, paragraphs |
 | JWT Inspector | TRF | – | Decodes header and payload and reports `alg` and `exp`; never verifies a signature |
-| Leetspeak | OBF | – | Level (light / heavy) |
+| Leetspeak (1337) | OBF | – | Level (light / heavy) |
 | Base64 | ENC | – | Standard / URL-safe |
 | Base32 | ENC | – | Standard RFC 4648 / Base32 Hex |
 | Base58 | ENC | – | Bitcoin / Ripple / Flickr |
@@ -221,9 +221,15 @@ All of the values above were produced by the shipped implementation and are repr
   design, and both keywords are required to read a message back.
 * Trifid works on its 27-cell cube, so it carries letters (plus `.`, and a space on the merged
   alphabet) only.
-* There is one AES tool per mode, not per key size: *AES-GCM Encryption* and *AES-CBC + HMAC* have
-  a **Key size** setting (AES-128 / AES-192 / AES-256) and the size is detected again on decrypt,
-  so a payload written with any of them reads back without remembering the setting.
+* There is one AES tool per mode, not per key size: *AES-GCM Encryption*, *AES-CBC + HMAC* and
+  *AES-CTR + HMAC* have a **Key size** setting (AES-128 / AES-192 / AES-256). The size is recorded
+  in the message and the setting must match it on decrypt — a mismatch is refused with a message
+  that names the size the message needs, instead of silently decrypting with a different key.
+* Payloads written before version 1.4.2 did not record the key size. They still decrypt, and the
+  app tells you which size to select if your setting is wrong.
+* A key of the wrong size for a message is also named explicitly by *AES-GCM with your own key*
+  ("this message was encrypted with a 128-bit AES key, but the key you pasted is 256 bits") and by
+  *RSA-OAEP + AES-GCM* ("this message was encrypted for a 3072-bit RSA key…").
 * RSA-OAEP cannot encrypt more than a short block on its own, so this tool wraps a fresh 256-bit
   AES key with the public key and encrypts the text with AES-256-GCM. Only the matching private
   key can read the result, and nothing else can be decrypted with it.

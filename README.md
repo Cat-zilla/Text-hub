@@ -14,15 +14,42 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.4.1 (versionCode 5) |
-| Tools | 73, in 5 categories |
-| Tests | 246 unit tests, all green (`:core:test`) |
+| Version | 1.4.2 (versionCode 6) |
+| Tools | 73, in 5 categories (audited: see §9) |
+| Tests | 260 unit tests, all green (`:core:test`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
 | Permissions | none (no `INTERNET`, nothing else) |
 | Runtime dependencies | AndroidX/Compose only — no third-party crypto, JSON or networking library |
 | Developer | Catzilla |
+
+---
+
+## What's new in 1.4.2
+
+**Fixed: the AES Key size setting is now honoured on decryption.** Previously an AES-128 message
+decrypted with the AES-256 setting (and any other combination) succeeded, because the setting was
+only read when encrypting and decryption guessed the key size. Encryption now records the size in
+the payload's `kdfId` byte (`0x02` = 256-bit; `0x01` remains "legacy, size not recorded") and
+decryption derives exactly that key. A mismatch is **refused** with a sentence that names the size
+the message needs, so changing the setting can never silently succeed. Messages written by
+1.3.0–1.4.1 still decrypt, and report which size they actually use.
+
+**The whole toolset was audited (all 73 tools).** The audit added in this round found and fixed
+three real defects, and two documentation ones:
+
+| Found | Fix |
+| --- | --- |
+| *Spelling alphabet* crashed with an `ArrayIndexOutOfBoundsException` on any non-ASCII letter or digit (`Grüße`, `नमस्ते`, `٣`): it used `Char.isLetter()`, which is true for thousands of characters, to index a 26-entry table | Only ASCII `A–Z`/`0–9` are spelled; anything else is refused with a friendly sentence that lists the characters it cannot spell |
+| Sixteen tools could not be found by typing their own id (`utf16`, `railfence`, `aescbc`, `textdiff`, …) because ids were missing from the search index | The search index now contains every id plus a punctuation-free spelling of the name, so `railfence` *and* `rail fence` both work |
+| A non-ASCII letter in a cipher key was silently turned into a bogus A–Z shift (Vigenère, Beaufort, Autokey, Playfair, ADFGX, custom alphabets) | Keys are filtered to ASCII letters (and digits where the alphabet has them), so no invalid index can be produced |
+| The reference and README called two tools by names the app never uses | Documentation now matches the registry exactly, and a test enforces it |
+
+New regression tests lock all of this down: `ToolAuditTest` sweeps every tool's parameters,
+defaults, sensitive flags, behaviour on ten unusual inputs in both directions, searchability by id
+and name, claim discipline, error friendliness and key-size enforcement; `ToolAuditReportTest`
+writes `core/build/tool-audit.txt`, a per-tool report of the whole registry. Test total: **260**.
 
 ---
 
@@ -84,7 +111,7 @@ Encode • Decode • Transform
 
 | Tool | Directions | Requires | Classification |
 | --- | --- | --- | --- |
-| Hash | Hash / verify | Algorithm (MD5, SHA-1, SHA-256, SHA-512), output format | Cryptographic hash (one-way) — MD5 and SHA-1 marked broken |
+| Hash (one-way) | Hash / verify | Algorithm (MD5, SHA-1, SHA-256, SHA-512), output format | Cryptographic hash (one-way) — MD5 and SHA-1 marked broken |
 | HMAC | Tag / verify | Shared secret key, algorithm | Message authentication code |
 | PBKDF2 Password Hash | Hash / verify | Password (≥ 8 characters) | Cryptographic hash (one-way), 210 000 iterations |
 | Checksum | Checksum / verify | Kind (CRC-32 / Adler-32), output format | Checksum (integrity only) |
@@ -157,7 +184,7 @@ Encode • Decode • Transform
 | XOR | UTF-8 bytes, hex or Base64 output — **reversible transformation, not secure** |
 | Case Converter | UPPER, lower, Title, Sentence, tOGGLE, camel, Pascal, snake, kebab, CONSTANT, dot |
 | Line Tools | Sort (A→Z, Z→A, length, numeric), de-duplicate, trim, drop empty, reverse, number, join |
-| Leetspeak | Light and heavy substitution |
+| Leetspeak (1337) | Light and heavy substitution |
 | JSON Formatter | Indent 2 spaces / tabs, minify, list key paths; parse errors name the line |
 | Regex Tester | Find, replace, split, highlight; ignore case, multiline, dot-all |
 | Text Diff | Two versions separated by a separator line; reports unchanged / removed / added |
@@ -218,14 +245,17 @@ stays readable:
 | `0x05` | AES-GCM with your own key | key length · IV(12) · ciphertext ‖ GCM tag(16) |
 | `0x11` | RSA-OAEP + AES-GCM | algorithm id · wrapped-key length · RSA-wrapped key · IV(12) · ciphertext ‖ GCM tag(16) |
 
-**Key sizes are settings, not separate tools.** *AES-GCM Encryption* and *AES-CBC + HMAC* offer
-AES-128, AES-192 and AES-256, and the size is **not** stored in the payload: on decrypt each
-supported length is derived and the authentication tag decides which one is right. Consequences:
+**Key sizes are settings, not separate tools — and they are enforced.** *AES-GCM Encryption*,
+*AES-CBC + HMAC* and *AES-CTR + HMAC* offer AES-128, AES-192 and AES-256. The size is recorded in
+the payload's `kdfId` byte, and decryption uses exactly that size:
 
-* payloads written with any key size — including ones from earlier versions — decrypt without the
-  user remembering the setting;
-* an update can never strand existing data;
-* the general tools are the only AES entry points, so there is exactly one AES tool per mode.
+* a message written with AES-128 is **refused** by the AES-256 setting, with a message naming the
+  size it needs (*"…encrypted with a 128-bit AES key, but the key size selected here is
+  different"*). Changing the setting cannot silently succeed;
+* payloads written before 1.4.2 did not record the size. They still decrypt, and the app reports
+  which size they actually use so the user can select it — no data is stranded;
+* wrong-size keys are named just as explicitly by *AES-GCM with your own key* and
+  *RSA-OAEP + AES-GCM* (which reports the RSA key size a message was encrypted for).
 
 Full specification, validation rules, the compatibility contract and the security reasoning:
 [`docs/ENCRYPTION_FORMAT.md`](docs/ENCRYPTION_FORMAT.md).
@@ -354,12 +384,12 @@ Notes:
 
 | File | Size | md5 |
 | --- | --- | --- |
-| `apk/TextHub-1.4.1-release.apk` (signed) | 9,522,280 B | `37ddf36095b1a75ba330c97a1f978268` |
-| `apk/TextHub-1.4.1-debug.apk` | 14,298,148 B | `c9bb5a161a88c3198e99264efc6188bc` |
+| `apk/TextHub-1.4.2-release.apk` (signed) | 9,523,872 B | `b7cbed1bb55112d4248eadeb403d05a0` |
+| `apk/TextHub-1.4.2-debug.apk` | 14,301,140 B | `6715cc312ca54649f174b2f3eece9bf3` |
 
-Both report `versionName 1.4.1`, `versionCode 5`, `minSdk 24`, `targetSdk 34`, and declare **no
+Both report `versionName 1.4.2`, `versionCode 6`, `minSdk 24`, `targetSdk 34`, and declare **no
 permissions** other than Android's own `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
-`TextHub-1.4.1-source-and-keys.zip` contains the full source together with the release keystore,
+`TextHub-1.4.2-source-and-keys.zip` contains the full source together with the release keystore,
 so updates can be signed with the same key.
 
 ---
@@ -391,7 +421,7 @@ password-manager Base64 trick), manual signing and how to switch to your own key
 
 ## 9. Testing
 
-`./gradlew :core:test` runs **246 unit tests** in `core/src/test/kotlin/com/texthub/core/`:
+`./gradlew :core:test` runs **260 unit tests** in `core/src/test/kotlin/com/texthub/core/`:
 
 | Test class | Tests | Coverage |
 | --- | --- | --- |
@@ -404,6 +434,8 @@ password-manager Base64 trick), manual signing and how to switch to your own key
 | `NewTools2Test` | 46 | AES key sizes, hashes (MD5/SHA-1/256/512 + Base64 form), HMAC vectors, PBKDF2 format and verification, CRC-32/Adler-32, Base91, Punycode (`münchen` → `mnchen-3ya`), Roman numerals, UTF-16/UTF-32 views, hex dump, Hill 3×3, Porta, Trifid, Scytale, ADFGX, Enigma (`BDZGO`, `EWTYX`, `RXWKBV`, reciprocity), custom-alphabet Vigenère, JSON, regex, diff, statistics, JWT |
 | `SecureToolsTest` | 15 | AES-GCM and AES-CBC at 128/192/256 through the `keySize` setting (round trip, size detected on decrypt, one AES tool per mode), AES-CTR (all sizes, tamper, wrong password, non-determinism), raw-key AES-GCM (Base64 and hex keys, wrong length/value), RSA hybrid (2048-bit round trip, ~2 kB of text, wrong private key, tampering, PEM/PKCS#1 mistakes), key generation |
 | `RegistryTest` | 15 | Unique ids, every tool documented and classified, only the six authenticated tools may claim security, sensitive parameters flagged, search behaviour, round trip of every tool, Unicode round trips, friendly error messages (no stack traces), direction swap |
+| `ToolAuditTest` | 12 | Sweeps **every** registered tool: choice/number parameters, default maps, sensitive flags, friendliness for ten unusual inputs in both directions, searchability by id and name, security-claim discipline, documentation coverage, key-size enforcement, and regression tests for the bugs found by the audit |
+| `ToolAuditReportTest` | 1 | Writes `core/build/tool-audit.txt`: a per-tool report (id, category, parameters, behaviour on a sample, round trip) for reviewing the whole registry at once |
 
 `RegistryTest` iterates over the *whole* registry, so a newly added tool is immediately covered by
 round-trip, classification, documentation and error-message checks. JUnit XML reports land in
@@ -496,8 +528,8 @@ border, never by colour alone.
 ```
 TextHub/
 ├── apk/
-│   ├── TextHub-1.4.1-release.apk        signed release build
-│   └── TextHub-1.4.1-debug.apk          debug build
+│   ├── TextHub-1.4.2-release.apk        signed release build
+│   └── TextHub-1.4.2-debug.apk          debug build
 ├── core/                                plain JVM library: algorithms + tests
 │   └── src/
 │       ├── main/kotlin/com/texthub/core/

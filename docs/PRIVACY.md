@@ -75,6 +75,15 @@ settings.)
 * The password field is rendered with `PasswordVisualTransformation`, and the operating system's
   keyboard is used as usual — Text Hub does not implement its own input handling.
 
+## Round 6 change (version 1.4.2)
+
+* The Key size setting on the AES tools is now enforced on decryption instead of being ignored, and
+  the size is recorded inside the encrypted message (KDF id `0x02`). Nothing new is stored on the
+  device: the payload format is unchanged apart from that one header byte, and no key or password is
+  written anywhere.
+* The tool audit added in this round reads and reformats text locally like every other test; it
+  stores nothing and uses no network.
+
 ## Round 4 additions (version 1.4.0)
 
 * The AES tools (with their key-size setting), AES-CTR, raw-key AES-GCM, the RSA hybrid and the RSA key generator add

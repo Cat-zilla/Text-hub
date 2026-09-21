@@ -94,6 +94,17 @@ Gradle 8.2, Kotlin 1.9.22, AGP 8.1.4, Compose BOM 2023.10.01, minSdk 24, targetS
 9. Star two tools, reopen the picker → they appear under *Favourites*.
 10. Airplane mode on → repeat any step → everything still works.
 
+## Round 6 fixes (version 1.4.2)
+
+| [x] | **Reported bug fixed:** the AES Key size setting was ignored on decryption, so an AES-128 message decrypted with the AES-256 setting (and vice versa). The size is now recorded in the payload's `kdfId` (`0x02` = 256-bit) and enforced: a mismatch is refused with a message that names the size the message needs |
+| [x] | Legacy payloads (`kdfId = 0x01`, written by 1.3.0–1.4.1) still decrypt, and report which size they actually need so the right setting can be selected — no existing data is stranded |
+| [x] | Wrong-size keys are named by *AES-GCM with your own key* and *RSA-OAEP + AES-GCM* too, instead of a generic failure |
+| [x] | **Audit found real bugs, all fixed:** `nato` crashed with an `ArrayIndexOutOfBoundsException` on any non-ASCII letter or digit (`ü`, `न`, `٣` — it indexed a 26-entry table with `Char.isLetter`); sixteen tools were not findable by their own id in search (`utf16`, `railfence`, `aescbc`, …); non-ASCII letters in a cipher key were silently used as bogus A–Z shifts (Vigenère, Beaufort, Autokey, Playfair, ADFGX, custom alphabets) |
+| [x] | Documentation drift fixed: the reference and README now use the registry's exact tool names (`Hash (one-way)`, `Leetspeak (1337)`) — a new test asserts every tool appears in `docs/TOOLS.md` and `README.md` |
+| [x] | New `ToolAuditTest` sweeps all 73 tools (parameters, defaults, sensitive flags, ten unusual inputs × both directions, searchability, claim discipline, error friendliness, key-size enforcement); `ToolAuditReportTest` writes `core/build/tool-audit.txt` with a per-tool report |
+| [x] | `:core:test` → **260 tests, 0 failures** |
+| [x] | Release APK `apk/TextHub-1.4.2-release.apk` signed with the same key; `aapt2 dump permissions` shows no `INTERNET` |
+
 ## Round 5 change (version 1.4.1)
 
 | [x] | The six dedicated AES tools (AES-128/192/256-GCM and AES-128/192/256-CBC + HMAC) were removed: the key size is already a **Key size** setting on *AES-GCM Encryption* and *AES-CBC + HMAC*, and both detect it again on decrypt. Fewer, clearer tools — same payload format, no payload becomes unreadable |
