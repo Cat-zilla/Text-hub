@@ -11,7 +11,7 @@ import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
-import com.texthub.core.util.utf8String
+import com.texthub.core.util.asTextOrFail
 
 class Base58Processor : TextProcessor {
 
@@ -46,7 +46,8 @@ class Base58Processor : TextProcessor {
                 "Cryptocurrency addresses",
                 "Short links and human-transcribable identifiers",
             ),
-            warnings = listOf("Encoding, not encryption."),
+            warnings = listOf(
+                "Base58 stores no marker for the alphabet: decoding with the wrong Variant cannot always be detected, so keep the setting that was used to encode.","Encoding, not encryption."),
         ),
         keywords = listOf("base58", "bitcoin", "ripple", "flickr"),
     )
@@ -56,7 +57,14 @@ class Base58Processor : TextProcessor {
         return if (direction == Direction.ENCODE) {
             Base58Codec.encode(input.utf8Bytes(), alphabet)
         } else {
-            Base58Codec.decode(input.trim(), alphabet).utf8String()
+            // The alphabet in use cannot be recovered from a Base58 string, so a wrong Variant can
+            // otherwise return confident nonsense. A result that is not valid text is always wrong
+            // for a text tool, so it is refused with a pointer to the setting.
+            Base58Codec.decode(input.trim(), alphabet).asTextOrFail(
+                "This Base58 payload does not decode to text with the selected Variant. Base58 itself " +
+                    "does not record which alphabet it was written with, so check the Variant " +
+                    "(Standard / Ripple / Flickr) and try again."
+            )
         }
     }
 }

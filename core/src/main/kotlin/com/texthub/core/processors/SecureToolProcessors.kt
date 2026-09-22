@@ -4,7 +4,10 @@ import com.texthub.core.TextProcessor
 import com.texthub.core.crypto.AesCbcHmac
 import com.texthub.core.crypto.AesCtrHmac
 import com.texthub.core.crypto.AesGcmPayload
+import com.texthub.core.crypto.JweFormat
+import com.texthub.core.crypto.OpenSslEnc
 import com.texthub.core.crypto.RawKeyGcm
+import com.texthub.core.crypto.RsaPem
 import com.texthub.core.crypto.RsaHybrid
 import com.texthub.core.crypto.RsaKeyGen
 import com.texthub.core.model.Choice
@@ -80,8 +83,13 @@ class AesCtrProcessor : TextProcessor {
                     prefixKeySizeInPayload = true,
                 )
             } else {
+                val trimmed = input.trim()
+                if (OpenSslEnc.looksLikeSalted(trimmed)) throw Errors.opensslPointsHere()
+                if (JweFormat.looksLikeJwe(trimmed)) {
+                    throw Errors.jwePointsHere("AES-GCM with your own key (for alg=dir tokens) or RSA-OAEP + AES-GCM (for RSA tokens)")
+                }
                 AesCtrHmac.decrypt(
-                    payloadBase64 = input.trim(),
+                    payloadBase64 = trimmed,
                     password = password,
                     expectedKeySizeBytes = keySizeOf(params),
                 )
@@ -116,9 +124,41 @@ class AesRawKeyProcessor : TextProcessor {
                 label = "AES key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "16, 24 or 32 bytes as Base64 or hex",
                 sensitive = true,
                 helper = "Paste a raw key produced elsewhere. Nothing about it is stored or logged.",
+                validator = { value -> if (value.isBlank()) null else runCatching { RawKeyGcm.parseKey(value) }.exceptionOrNull()?.message },
+            ),
+            ParamSpec(
+                key = "format",
+                label = "Format",
+                kind = ParamKind.CHOICE,
+                defaultValue = "auto",
+                choices = listOf(
+                    Choice("auto", "Detect automatically"),
+                    Choice("texthub", "Text Hub (raw-key GCM)"),
+                    Choice("jwe", "JWE compact (JSON Web Encryption)"),
+                ),
+                helper = "JWE tokens have five dot-separated parts and name their own algorithm, so " +
+                    "they are recognised without guessing. Text Hub payloads start with a 0x05 byte.",
+            ),
+            ParamSpec(
+                key = "jweEnc",
+                label = "JWE content encryption",
+                kind = ParamKind.CHOICE,
+                defaultValue = "A256GCM",
+                advanced = true,
+                choices = listOf(
+                    Choice("A256GCM", "A256GCM (AES-256-GCM)"),
+                    Choice("A192GCM", "A192GCM (AES-192-GCM)"),
+                    Choice("A128GCM", "A128GCM (AES-128-GCM)"),
+                    Choice("A128CBC-HS256", "A128CBC-HS256 (AES-CBC + HMAC-SHA256)"),
+                    Choice("A192CBC-HS384", "A192CBC-HS384 (AES-CBC + HMAC-SHA384)"),
+                    Choice("A256CBC-HS512", "A256CBC-HS512 (AES-CBC + HMAC-SHA512)"),
+                ),
+                helper = "Only used when Text Hub writes a JWE token. When reading one, the token's own " +
+                    "enc header decides, and the key length has to match it.",
             ),
         ),
         info = ToolInfo(
@@ -143,12 +183,33 @@ class AesRawKeyProcessor : TextProcessor {
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
         val key = params["key"] ?: ""
         if (key.isBlank()) throw Errors.missingKey()
+        val format = params["format"] ?: "auto"
         return if (direction == Direction.ENCODE) {
             if (input.isEmpty()) throw Errors.emptyInput()
-            RawKeyGcm.encrypt(input, key)
+            if (format == "jwe") {
+                JweFormat.encrypt(input, RawKeyGcm.parseKey(key), jweEnc(params))
+            } else {
+                RawKeyGcm.encrypt(input, key)
+            }
         } else {
-            RawKeyGcm.decrypt(input.trim(), key)
+            val trimmed = input.trim()
+            val isJwe = when (format) {
+                "jwe" -> true
+                "texthub" -> false
+                else -> JweFormat.looksLikeJwe(trimmed)
+            }
+            if (isJwe) {
+                // The token's own header decides enc, IV and tag length; the key must match it.
+                JweFormat.decrypt(trimmed, RawKeyGcm.parseKey(key))
+            } else {
+                RawKeyGcm.decrypt(trimmed, key)
+            }
         }
+    }
+
+    private fun jweEnc(params: Map<String, String>): JweFormat.Enc {
+        val id = params["jweEnc"] ?: "A256GCM"
+        return JweFormat.Enc.values().firstOrNull { it.id == id } ?: JweFormat.Enc.A256GCM
     }
 
 }
@@ -173,9 +234,32 @@ class RsaProcessor : TextProcessor {
                 label = "RSA key (PEM)",
                 kind = ParamKind.MULTILINE,
                 defaultValue = "",
+                required = true,
                 hint = "Paste a public key to encrypt, or your private key to decrypt",
                 sensitive = true,
                 helper = "Accepts the -----BEGIN PUBLIC KEY----- and -----BEGIN PRIVATE KEY----- blocks.",
+                validator = { value ->
+                    when {
+                        value.isBlank() -> null
+                        value.contains("-----BEGIN PRIVATE KEY-----") -> runCatching { RsaPem.privateKey(value) }.exceptionOrNull()?.message
+                        value.contains("-----BEGIN PUBLIC KEY-----") -> runCatching { RsaPem.publicKey(value) }.exceptionOrNull()?.message
+                        else -> "Paste a complete PEM block, including the BEGIN and END lines."
+                    }
+                },
+            ),
+            ParamSpec(
+                key = "format",
+                label = "Format",
+                kind = ParamKind.CHOICE,
+                defaultValue = "auto",
+                choices = listOf(
+                    Choice("auto", "Detect automatically"),
+                    Choice("texthub", "Text Hub (RSA-OAEP + AES-GCM)"),
+                    Choice("jwe", "JWE compact (JSON Web Encryption)"),
+                ),
+                helper = "A JWE token names its own algorithm in the header (alg=RSA-OAEP or " +
+                    "RSA-OAEP-256), so a token encrypted for your key opens here. Text Hub payloads " +
+                    "start with a version byte.",
             ),
         ),
         info = ToolInfo(
@@ -211,7 +295,20 @@ class RsaProcessor : TextProcessor {
             if (input.isEmpty()) throw Errors.emptyInput()
             RsaHybrid.encrypt(input, key)
         } else {
-            RsaHybrid.decrypt(input.trim(), key)
+            val trimmed = input.trim()
+            val isJwe = when (params["format"] ?: "auto") {
+                "jwe" -> true
+                "texthub" -> false
+                else -> JweFormat.looksLikeJwe(trimmed)
+            }
+            if (isJwe) {
+                // The token carries its own enc; the content key is unwrapped with this RSA key.
+                JweFormat.decryptWithUnwrap(trimmed) { encryptedKey, alg ->
+                    RsaHybrid.unwrapJweCek(encryptedKey, alg, key)
+                }
+            } else {
+                RsaHybrid.decrypt(trimmed, key)
+            }
         }
     }
 
@@ -265,6 +362,7 @@ class RsaKeyGenProcessor : TextProcessor {
                 "PKCS#8 (-----BEGIN PRIVATE KEY-----), 64 characters per line.",
         ),
         keywords = listOf("rsa", "key pair", "generate", "pem", "public key", "private key", "keygen"),
+        oneWay = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -280,6 +378,7 @@ private fun passwordSpec(helper: String) = ParamSpec(
     label = "Password",
     kind = ParamKind.PASSWORD,
     defaultValue = "",
+    required = true,
     hint = "Enter a strong password",
     sensitive = true,
     helper = "$helper Use a long, unique password: it cannot be recovered if it is lost.",

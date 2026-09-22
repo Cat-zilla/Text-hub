@@ -64,7 +64,22 @@ data class ParamSpec(
     val helper: String? = null,
     /** When true the app never writes this value to disk. Always true for [ParamKind.PASSWORD]. */
     val sensitive: Boolean = false,
-)
+    /**
+     * True for settings that are only needed in special situations (an external payload format, a
+     * digest, an explicit IV, a separator). The UI keeps these collapsed under
+     * "Additional encryption settings" so the common path stays short; they are still *required*
+     * for the situations they describe, which is why they live on the tool rather than in a
+     * separate tool.
+     */
+    val advanced: Boolean = false,
+    /** True when the tool cannot run without a value (no usable default). */
+    val required: Boolean = false,
+    /** Optional extra check for this single value; returns a user-facing sentence or null. */
+    val validator: ((String) -> String?)? = null,
+) {
+    /** The choice entry that matches [value], or null when the value is not offered. */
+    fun choiceFor(value: String): Choice? = choices.firstOrNull { it.id == value }
+}
 
 data class ToolInfo(
     /** Short description of what the method does. */
@@ -97,7 +112,38 @@ data class ToolMeta(
      * The main screen then processes an empty input box instead of refusing to run.
      */
     val inputOptional: Boolean = false,
+    /**
+     * True when the tool runs in one direction only: a digest, a checksum, a comparison, a brute
+     * force list, key generation. Such a tool must not offer a direction switch, and its result
+     * cannot meaningfully be pushed back through it, so the main screen hides Swap as well.
+     */
+    val oneWay: Boolean = false,
+    /**
+     * True when the result is an answer rather than a message: a digest, a verification verdict, a
+     * measurement, an inspection report. The direction switch can still be meaningful (Hash vs
+     * Verify), but pushing such a result back through the tool is not, so Swap is hidden.
+     */
+    val resultIsFinal: Boolean = false,
 ) {
+    /**
+     * True when the tool has two different directions worth switching between. A symmetric tool
+     * (ROT13, Atbash) computes the same thing both ways and a one-way tool has no reverse at all,
+     * so neither shows the direction switch - the UI only offers controls the tool can honour.
+     */
+    val hasDirectionChoice: Boolean
+        get() = !oneWay && !symmetric && encodeLabel != decodeLabel
+
+    /** Swap pushes the result back through the tool, which only makes sense for a reversible one. */
+    val supportsSwap: Boolean get() = !oneWay && !resultIsFinal
+
+    /** Reset is offered as soon as there is more than one thing to reset. */
+    val canResetParams: Boolean get() = params.size > 1
+
+    /** Settings shown inline; the rest live under "Additional encryption settings". */
+    val primaryParams: List<ParamSpec> get() = params.filter { !it.advanced }
+
+    val advancedParams: List<ParamSpec> get() = params.filter { it.advanced }
+
     /**
      * Everything the search box matches against: the tool name, its **id** (so typing `utf16`,
      * `aescbc` or `railfence` finds the tool), a punctuation-free spelling of the name (so
@@ -139,4 +185,49 @@ fun computeStats(text: String): TextStats {
     var lines = 1
     for (c in text) if (c == '\n') lines++
     return TextStats(chars, words, lines)
+}
+
+/** A parameter value the tool cannot use, with a sentence that says what to change. */
+data class ParamIssue(val key: String, val message: String)
+
+/**
+ * Checks the parameter values of a tool and returns one friendly sentence per problem.
+ *
+ * This is deliberately about *parameters*, not about the input text: it lets the UI mark the
+ * offending field ("Shift must be between 1 and 25") instead of showing one generic banner.
+ * Anything that needs the input text is reported by the processor itself.
+ */
+fun ToolMeta.validateParams(params: Map<String, String>): List<ParamIssue> {
+    val issues = mutableListOf<ParamIssue>()
+    for (spec in this.params) {
+        val value = params[spec.key] ?: spec.defaultValue
+        if (spec.required && value.isBlank()) {
+            issues += ParamIssue(spec.key, "Enter " + spec.label.lowercase() + " to continue.")
+            continue
+        }
+        when (spec.kind) {
+            ParamKind.NUMBER -> {
+                val number = value.trim().toIntOrNull()
+                if (number == null) {
+                    issues += ParamIssue(spec.key, spec.label + " must be a whole number.")
+                } else if (spec.min != Int.MIN_VALUE && number < spec.min) {
+                    issues += ParamIssue(spec.key, spec.label + " must be at least " + spec.min + ".")
+                } else if (spec.max != Int.MAX_VALUE && number > spec.max) {
+                    issues += ParamIssue(spec.key, spec.label + " must be at most " + spec.max + ".")
+                }
+            }
+            ParamKind.CHOICE -> {
+                if (value.isNotBlank() && spec.choiceFor(value) == null) {
+                    issues += ParamIssue(spec.key, spec.label + " has to be one of the offered options.")
+                }
+            }
+            else -> Unit
+        }
+        val validator = spec.validator
+        if (validator != null && !(spec.required && value.isBlank())) {
+            val message = validator(value)
+            if (message != null) issues += ParamIssue(spec.key, message)
+        }
+    }
+    return issues
 }

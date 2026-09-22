@@ -80,6 +80,7 @@ class HashProcessor : TextProcessor {
             convention = "Digests are computed over the UTF-8 bytes of the input.",
         ),
         keywords = listOf("hash", "sha256", "sha512", "sha3", "md5", "fingerprint", "digest", "checksum"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -128,6 +129,7 @@ class HmacProcessor : TextProcessor {
                 key = "key",
                 label = "Shared secret key",
                 kind = ParamKind.PASSWORD,
+                required = true,
                 defaultValue = "",
                 hint = "Both sides must use the same key",
                 sensitive = true,
@@ -172,6 +174,7 @@ class HmacProcessor : TextProcessor {
             convention = "Tags are compared in constant time, so a wrong tag cannot be found byte by byte.",
         ),
         keywords = listOf("hmac", "mac", "authentication", "integrity", "sign", "verify"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -229,6 +232,7 @@ class Pbkdf2Processor : TextProcessor {
                 key = "password",
                 label = "Password",
                 kind = ParamKind.PASSWORD,
+                required = true,
                 defaultValue = "",
                 hint = "The password to hash or check",
                 sensitive = true,
@@ -262,6 +266,7 @@ class Pbkdf2Processor : TextProcessor {
             convention = "Stored form: pbkdf2-sha256\$210000\$salt\$hash, all parts Base64 (unpadded).",
         ),
         keywords = listOf("pbkdf2", "password", "salt", "iterations", "kdf", "hash", "store"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -350,6 +355,7 @@ class ChecksumProcessor : TextProcessor {
             convention = "CRC-32 and Adler-32 as defined by RFC 1950, computed over UTF-8 bytes.",
         ),
         keywords = listOf("crc32", "adler32", "checksum", "integrity", "corruption"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {

@@ -15,11 +15,32 @@ import javax.crypto.spec.SecretKeySpec
  */
 object Pbkdf2 {
 
-    fun derive(password: CharArray, salt: ByteArray, iterations: Int, keyLengthBytes: Int): ByteArray {
+    /** The digest used by HMAC in the KDF. SHA-256 is what Text Hub uses for its own payloads. */
+    enum class Digest(val jceName: String, val label: String) {
+        SHA256("HmacSHA256", "SHA-256"),
+        SHA512("HmacSHA512", "SHA-512"),
+        SHA1("HmacSHA1", "SHA-1"),
+        MD5("HmacMD5", "MD5"),
+    }
+
+    fun derive(password: CharArray, salt: ByteArray, iterations: Int, keyLengthBytes: Int): ByteArray =
+        derive(Digest.SHA256, password, salt, iterations, keyLengthBytes)
+
+    /**
+     * PBKDF2 with a selectable HMAC digest. Directories such as the OpenSSL `enc` format derive
+     * their key with the digest the file was written with, which is why the digest is a parameter.
+     */
+    fun derive(
+        digest: Digest,
+        password: CharArray,
+        salt: ByteArray,
+        iterations: Int,
+        keyLengthBytes: Int,
+    ): ByteArray {
         require(iterations > 0) { "iterations must be positive" }
         require(keyLengthBytes > 0) { "keyLength must be positive" }
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(password.concatToString().toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        val mac = Mac.getInstance(digest.jceName)
+        mac.init(SecretKeySpec(password.concatToString().toByteArray(Charsets.UTF_8), digest.jceName))
 
         val hLen = mac.macLength
         val l = (keyLengthBytes + hLen - 1) / hLen

@@ -2,6 +2,8 @@ package com.texthub.core.processors
 
 import com.texthub.core.TextProcessor
 import com.texthub.core.crypto.AesGcmPayload
+import com.texthub.core.crypto.JweFormat
+import com.texthub.core.crypto.OpenSslEnc
 import com.texthub.core.model.Choice
 import com.texthub.core.model.Classification
 import com.texthub.core.model.Direction
@@ -46,6 +48,7 @@ class AesProcessor : TextProcessor {
                 key = "password",
                 label = "Password",
                 kind = ParamKind.PASSWORD,
+                required = true,
                 defaultValue = "",
                 hint = "Enter a strong password",
                 sensitive = true,
@@ -87,8 +90,15 @@ class AesProcessor : TextProcessor {
                     prefixKeySizeInPayload = true,
                 )
             } else {
+                // A payload from somewhere else is not rejected because it "is not ours": the
+                // shape is recognised and the user is told which of the other tools reads it.
+                val trimmed = input.trim()
+                if (OpenSslEnc.looksLikeSalted(trimmed)) throw Errors.opensslPointsHere()
+                if (JweFormat.looksLikeJwe(trimmed)) {
+                    throw Errors.jwePointsHere("AES-GCM with your own key (for alg=dir tokens) or RSA-OAEP + AES-GCM (for RSA tokens)")
+                }
                 AesGcmPayload.decrypt(
-                    payloadBase64 = input.trim(),
+                    payloadBase64 = trimmed,
                     password = password,
                     expectedKeySizeBytes = keySizeOf(params),
                 )

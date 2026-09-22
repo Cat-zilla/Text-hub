@@ -34,6 +34,7 @@ class ColumnarTranspositionProcessor : TextProcessor {
                 label = "Keyword",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "e.g. ZEBRA",
                 sensitive = true,
             ),

@@ -117,6 +117,8 @@ class RegexProcessor : TextProcessor {
                 label = "Flags",
                 kind = ParamKind.CHOICE,
                 defaultValue = "none",
+                advanced = true,
+                helper = "How the pattern is matched. Leave it on None for an ordinary match.",
                 choices = listOf(
                     Choice("none", "None"),
                     Choice("ignoreCase", "Ignore case"),
@@ -136,10 +138,14 @@ class RegexProcessor : TextProcessor {
                 "Extracting fields from logs",
                 "Bulk replacing with capture groups",
             ),
-            warnings = listOf("A text transformation, not encryption."),
+            warnings = listOf(
+                "Flags and operation change what is matched or replaced, so they are part of the input, not of the result.","A text transformation, not encryption."),
             convention = "Java regex syntax. Groups are reported as $1, $2 … in the replacement.",
         ),
         keywords = listOf("regex", "regular expression", "pattern", "replace", "split", "match"),
+        resultIsFinal = true,
+        // An empty input is a valid question here: the answer is "nothing to report".
+        inputOptional = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -231,6 +237,7 @@ class TextDiffProcessor : TextProcessor {
             convention = "Put the older version first, the separator line, then the newer version.",
         ),
         keywords = listOf("diff", "compare", "changes", "lines", "difference"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
@@ -335,6 +342,9 @@ class TextStatsProcessor : TextProcessor {
             convention = "Word counts split on whitespace; reading time assumes 200 words per minute.",
         ),
         keywords = listOf("count", "statistics", "characters", "words", "reading time", "bytes"),
+        resultIsFinal = true,
+        // An empty input is a valid question here: the answer is "nothing to report".
+        inputOptional = true,
     )
 
     private val stopWords = setOf(
@@ -424,6 +434,7 @@ class JwtProcessor : TextProcessor {
             convention = "Header and payload are Base64URL decoded and re-indented; the signature part is only measured.",
         ),
         keywords = listOf("jwt", "token", "claims", "header", "payload", "base64url"),
+        resultIsFinal = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {

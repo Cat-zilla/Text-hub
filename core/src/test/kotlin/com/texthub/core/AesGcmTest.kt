@@ -95,7 +95,9 @@ class AesGcmTest {
     @Test fun notAPayloadGivesFriendlyError() {
         val e = runCatching { decrypt("SGVsbG8gd29ybGQ=", "password123") }.exceptionOrNull()
         assertTrue(e is ToolException)
-        assertTrue(e!!.message!!.contains("does not look like Text Hub encrypted data"))
+        // The message explains what a Text Hub payload looks like, and where an OpenSSL file goes.
+        assertTrue(e!!.message!!.contains("not a Text Hub AES-GCM payload"))
+        assertTrue(e.message!!.contains("OpenSSL"))
     }
 
     @Test fun payloadStructureIsDocumented() {

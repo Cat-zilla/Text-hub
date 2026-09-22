@@ -146,17 +146,10 @@ object Utf16Codec {
 
     fun decode(text: String, format: String): String {
         val units = when (format) {
-            FORMAT_DECIMAL -> Regex("\\d+").findAll(text).map { it.value.toInt() }.toList()
+            FORMAT_DECIMAL -> decimalUnits(text)
             FORMAT_CSHARP -> Regex("\\\\u([0-9a-fA-F]{1,4})").findAll(text)
                 .map { it.groupValues[1].toInt(16) }.toList()
-            else -> {
-                val digits = text.replace(Regex("\\s+"), "")
-                if (digits.length % 4 != 0) throw Errors.unicodeEscape()
-                digits.chunked(4).map { group ->
-                    val value = group.toIntOrNull(16) ?: throw Errors.unicodeEscape()
-                    value
-                }
-            }
+            else -> hexUnits(text, width = 4, example = "0041 0042")
         }
         if (units.isEmpty()) throw Errors.unicodeEscape()
         val sb = StringBuilder()
@@ -185,16 +178,10 @@ object Utf32Codec {
 
     fun decode(text: String, format: String): String {
         val points = when (format) {
-            FORMAT_DECIMAL -> Regex("\\d+").findAll(text).map { it.value.toInt() }.toList()
+            FORMAT_DECIMAL -> decimalUnits(text)
             FORMAT_CSHARP -> Regex("\\\\U([0-9a-fA-F]{1,8})").findAll(text)
                 .map { it.groupValues[1].toInt(16) }.toList()
-            else -> {
-                val digits = text.replace(Regex("\\s+"), "")
-                if (digits.length % 8 != 0) throw Errors.unicodeEscape()
-                digits.chunked(8).map { group ->
-                    group.toIntOrNull(16) ?: throw Errors.unicodeEscape()
-                }
-            }
+            else -> hexUnits(text, width = 8, example = "00000041 00000042")
         }
         if (points.isEmpty()) throw Errors.unicodeEscape()
         points.forEach { if (it !in 0..0x10FFFF) throw Errors.unicodeEscape() }
@@ -345,4 +332,50 @@ object HexDumpCodec {
         if (rows == 0) throw Errors.hexDump()
         return out.toByteArray().toString(Charsets.UTF_8)
     }
+}
+
+/**
+ * Parses hexadecimal UTF-16 / UTF-32 units. Every token must be exactly [width] hex digits, which
+ * is what these formats look like everywhere (and what this app writes). A decimal payload left on
+ * Format = Hex therefore fails loudly instead of quietly producing the wrong characters, which is
+ * what used to happen when 3-digit decimal tokens were read as hex.
+ */
+private fun hexUnits(text: String, width: Int, example: String): List<Int> {
+    val tokens = Regex("\\S+").findAll(text).map { it.value }.toList()
+    if (tokens.isEmpty()) throw Errors.unicodeEscape()
+    val looksHex = tokens.all { token ->
+        token.length == width && token.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+    }
+    if (!looksHex) {
+        throw com.texthub.core.model.ToolException(
+            "These are not $width-digit hexadecimal units, so the Format setting does not match " +
+                "the payload. Expected something like \"$example\"; if the values are plain " +
+                "numbers, set Format to Decimal."
+        )
+    }
+    return tokens.map { it.toIntOrNull(16) ?: throw Errors.unicodeEscape() }
+}
+
+/**
+ * Parses decimal UTF-16 / UTF-32 units. Every part must be a plain number without leading zeros -
+ * which is how decimal code-point lists are written everywhere, including here. A hexadecimal
+ * payload (whose units are zero padded and often contain letters) is therefore refused with a
+ * pointer to the format setting instead of being read as decimal numbers.
+ */
+private fun decimalUnits(text: String): List<Int> {
+    val tokens = Regex("\\S+").findAll(text).map { it.value }.toList()
+    if (tokens.isEmpty()) throw Errors.unicodeEscape()
+    if (tokens.any { token -> token.any { !it.isDigit() } }) {
+        throw com.texthub.core.model.ToolException(
+            "This payload is not a list of decimal numbers, so the Format setting does not match it. " +
+                "If it contains letters or \\u escapes, choose the matching format instead of Decimal."
+        )
+    }
+    if (tokens.any { it.length > 1 && it.startsWith("0") }) {
+        throw com.texthub.core.model.ToolException(
+            "These are zero-padded units, which is how hexadecimal code points look (for example " +
+                "\"0068\"). Set Format to Hex to read this payload."
+        )
+    }
+    return tokens.map { it.toIntOrNull() ?: throw Errors.unicodeEscape() }
 }

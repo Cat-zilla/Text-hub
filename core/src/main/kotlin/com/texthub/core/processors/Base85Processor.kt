@@ -11,7 +11,7 @@ import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
-import com.texthub.core.util.utf8String
+import com.texthub.core.util.asTextOrFail
 
 class Base85Processor : TextProcessor {
 
@@ -45,7 +45,8 @@ class Base85Processor : TextProcessor {
                 "Compact printable representation of binary data",
                 "PostScript / PDF content streams",
             ),
-            warnings = listOf("Encoding, not encryption."),
+            warnings = listOf(
+                "Base85 stores no marker for the variant: keep the Variant that was used to encode.","Encoding, not encryption."),
         ),
         keywords = listOf("base85", "ascii85", "z85", "btoa"),
     )
@@ -55,7 +56,13 @@ class Base85Processor : TextProcessor {
         return if (direction == Direction.ENCODE) {
             Base85Codec.encode(input.utf8Bytes(), variant)
         } else {
-            Base85Codec.decode(input.trim(), variant).utf8String()
+            // Same reasoning as Base58: the variant is not stored in the payload, so a mismatch must
+            // end in a clear message rather than in replacement characters.
+            Base85Codec.decode(input.trim(), variant).asTextOrFail(
+                "This Base85 payload does not decode to text with the selected Variant. The variant " +
+                    "itself is not stored in the data, so check the Variant (Z85 / Ascii85 / RFC 1924) " +
+                    "and try again - or the data is binary rather than text."
+            )
         }
     }
 }

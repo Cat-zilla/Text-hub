@@ -170,7 +170,9 @@ class EnigmaProcessor : TextProcessor {
                 defaultValue = "AAA",
                 hint = "Three letters, e.g. AAA",
                 sensitive = true,
-                helper = "Ringstellung: rotates the wiring inside each rotor.",
+                advanced = true,
+                helper = "Ringstellung: rotates the wiring inside each rotor. Leave it at AAA unless " +
+                    "the message says otherwise - most instructions only give rotors and positions.",
             ),
             ParamSpec(
                 key = "positions",
@@ -279,6 +281,7 @@ class KeyedAlphabetProcessor : TextProcessor {
                 label = "Secret key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "Letters only, e.g. LEMON",
                 sensitive = true,
             ),

@@ -393,7 +393,8 @@ class ScytaleProcessor : TextProcessor {
                 "The oldest recorded military cipher",
                 "Demonstrating transposition without substitution",
             ),
-            warnings = listOf("A classical cipher - not modern secure encryption."),
+            warnings = listOf(
+                "The diameter is part of the key: a payload can only be read back with the same diameter.","A classical cipher - not modern secure encryption."),
             convention = "The rod width is the only secret; a wrong width produces scrambled but intact letters.",
         ),
         keywords = listOf("scytale", "sparta", "transposition", "rod", "diameter"),

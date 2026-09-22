@@ -34,6 +34,7 @@ class VigenereProcessor : TextProcessor {
                 label = "Secret key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "Letters only",
                 sensitive = true,
                 helper = "Example: KEY",

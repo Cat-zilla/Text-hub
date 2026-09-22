@@ -38,7 +38,12 @@ object Errors {
     fun substitutionAlpha() = ToolException("The substitution alphabet may only contain letters.")
     fun cipherParams() = ToolException("These cipher settings are not valid. Please check the supplied key and parameters.")
     fun aes() = ToolException("Unable to decrypt. The password or encrypted data may be incorrect.")
-    fun aesFormat() = ToolException("This does not look like Text Hub encrypted data. Paste the complete Base64 payload.")
+    fun aesFormat() = ToolException(
+        "This is not a Text Hub AES-GCM payload and it is not an OpenSSL enc file either. A Text Hub " +
+            "payload is one Base64 block; an OpenSSL file starts with U2FsdGVkX1 (Salted__). Paste the " +
+            "complete block, check that nothing was cut off, and make sure the payload comes from an " +
+            "AES-GCM tool - for an OpenSSL enc file use AES-CBC + HMAC with Format = OpenSSL enc."
+    )
     fun a1z26() = ToolException("Invalid A1Z26 input. Use numbers from 1 to 26 separated by the selected separator.")
     fun affine() = ToolException("Invalid Affine key. A must be coprime with 26 (for example 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25).")
     fun railFence() = ToolException("Invalid rail count. Use at least 2 rails.")
@@ -71,14 +76,22 @@ object Errors {
     fun jwt() = ToolException("This does not look like a JWT. Expected three dot-separated parts (header.payload.signature).")
     fun checksumFormat() = ToolException("Invalid checksum input. Use the value produced by this tool.")
     fun rawKey() = ToolException("This is not a usable AES key. Paste 16, 24 or 32 bytes as Base64 or as hex.")
-    fun rawKeyFormat() = ToolException("This does not look like a key from this tool. Paste the complete Base64 payload.")
+    fun rawKeyFormat() = ToolException(
+        "This is not a Text Hub raw-key payload (it starts with a version byte 0x05) and it is not a JWE " +
+            "token either. Paste the complete Base64 block, or a compact JWE (five dot-separated parts) " +
+            "if the data comes from a JOSE library."
+    )
     fun rsaKey() = ToolException("This is not a readable RSA key. Paste a complete PEM block, including the BEGIN and END lines.")
     fun rsaNeedPublic() = ToolException("Encrypting needs the recipient's public key: paste the -----BEGIN PUBLIC KEY----- block.")
     fun rsaNeedPrivate() = ToolException("Decrypting needs your private key: paste the -----BEGIN PRIVATE KEY----- block.")
     fun rsaDecrypt() = ToolException("Unable to decrypt. The private key does not match this message, or the data was changed.")
     fun rsaSize() = ToolException("Choose an RSA key size of 2048, 3072 or 4096 bits.")
     fun rsaPkcs1() = ToolException("This is an older PKCS#1 RSA key. Convert it to PKCS#8 / X.509 first, or generate a fresh pair with the RSA Key Pair Generator.")
-    fun rsaFormat() = ToolException("This does not look like an RSA message from this tool. Paste the complete Base64 payload.")
+    fun rsaFormat() = ToolException(
+        "This is not a Text Hub RSA payload and not a JWE token. Paste the complete Base64 block from " +
+            "RSA-OAEP + AES-GCM, or a compact JWE (five dot-separated parts) that was encrypted for this " +
+            "RSA key."
+    )
     fun rsaUnsupported() = ToolException("RSA-OAEP is not available on this device, so this tool cannot run here.")
     fun aesKeySizeMismatch(declaredBits: Int) = ToolException(
         "This message was encrypted with a $declaredBits-bit AES key, but the key size selected here is different. " +
@@ -95,5 +108,72 @@ object Errors {
     fun natoUnsupported(chars: String) = ToolException(
         "The spelling alphabet can only spell the 26 English letters and the digits 0-9. These characters have no word: $chars"
     )
+    // ---------------------------------------------------------------- external formats
+
+    fun openssl() = ToolException(
+        "This is not a readable OpenSSL enc payload. Paste the complete Base64 block exactly as the " +
+            "file contains it, including every line."
+    )
+
+    fun opensslNotSalted() = ToolException(
+        "This looks like an OpenSSL enc payload, but it carries no Salted__ header, which means " +
+            "the writer either used -nosalt or passed an explicit -S salt. Neither can be read " +
+            "here, because the salt is what the key is derived from and it is not in the data. " +
+            "Re-encrypt it without -nosalt and without -S (the salt is then stored in the file)."
+    )
+
+    /**
+     * OpenSSL `enc` output is not authenticated, so a failure cannot say *which* setting was wrong.
+     * The message names every value the user can change instead of saying "decryption failed".
+     */
+    fun opensslFailed(
+        kdf: String,
+        digest: String,
+        iterations: Int,
+        keyBits: Int,
+    ) = ToolException(
+        "Could not decrypt this OpenSSL enc payload. It is AES-CBC with PKCS#7 padding, so a wrong " +
+            "password, digest, key size or key derivation all fail the same way. Currently using " +
+            "$kdf, digest $digest, $iterations iterations, $keyBits-bit key. If the file was written " +
+            "by OpenSSL 1.x (or with -md md5 and no -iter), set Key derivation to Legacy and Digest " +
+            "to MD5."
+    )
+
+    fun opensslPointsHere() = ToolException(
+        "This is an OpenSSL enc file (it starts with Salted__). It uses AES-CBC with PKCS#7 padding " +
+            "and a password-derived key, not AES-GCM. Open AES-CBC + HMAC and set Format to " +
+            "\"OpenSSL enc\" to decrypt it."
+    )
+
+    fun jwePointsHere(toolName: String) = ToolException(
+        "This is a JWE token (JSON Web Encryption), which carries its own algorithm in its header. " +
+            "Open $toolName to decrypt it with the matching key."
+    )
+
+    fun jweFormat() = ToolException(
+        "This is not a readable JWE token. A compact JWE has five dot-separated parts: " +
+            "header.encryptedKey.iv.ciphertext.tag."
+    )
+
+    fun jweAlg(alg: String, toolName: String) = ToolException(
+        "This JWE token uses alg=\"$alg\". This tool cannot unwrap that algorithm: use $toolName " +
+            "with the matching key, or a tool that supports it."
+    )
+
+    fun jweEnc(enc: String, supported: String) = ToolException(
+        "This JWE token uses enc=\"$enc\", which this tool does not implement. Supported content " +
+            "encryption: $supported."
+    )
+
+    fun jweKeyLength(enc: String, expectedBits: Int, actualBits: Int) = ToolException(
+        "enc=\"$enc\" needs a $expectedBits-bit content encryption key, but the key here is " +
+            "$actualBits bits. Use the key the token was encrypted for."
+    )
+
+    fun jweAuth() = ToolException(
+        "The authentication check failed. The key is wrong for this token, or the token was changed " +
+            "after it was created."
+    )
+
     fun tooLarge(limit: Int) = ToolException("Input is very large (over $limit characters). Try processing a smaller piece of text.")
 }

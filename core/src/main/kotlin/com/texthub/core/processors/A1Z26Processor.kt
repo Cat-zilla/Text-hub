@@ -55,8 +55,13 @@ class A1Z26Processor : TextProcessor {
                 "Simple number codes and puzzles",
                 "Teaching letter positions",
             ),
-            warnings = listOf("A simple substitution/encoding-style transformation, not secure encryption."),
-            convention = "Numbers are separated by the chosen separator; words are separated by / or |.",
+            warnings = listOf(
+                "A simple substitution/encoding-style transformation, not secure encryption.",
+                "Decoding always returns capital letters: a number carries no case information.",
+            ),
+            convention = "Numbers are separated by the chosen separator; words are separated by / or |. " +
+                "Only A-Z have a number, so other characters (accents, other scripts, punctuation) " +
+                "are passed through unchanged, and decoding accepts any of the usual separators.",
         ),
         keywords = listOf("a1z26", "alphabet numbers", "letter numbers"),
     )
@@ -69,6 +74,11 @@ class A1Z26Processor : TextProcessor {
             else -> "-"
         }
         val wordSep = if (params["wordSeparator"] == "bar") " | " else " / "
+        // Decoding accepts every separator people actually type (spaces, tabs, newlines, dashes,
+        // slashes, pipes) as well as the two that are selected, because a separator is presentation
+        // rather than data: a mismatched setting must not silently change the answer.
+        val numberSeparators = setOf(' ', '\t', '\n', numberSep.trim().firstOrNull() ?: '-', '-')
+        val wordSeparators = setOf('/', '|', (if (params["wordSeparator"] == "bar") "|" else "/").first())
 
         if (direction == Direction.ENCODE) {
             val sb = StringBuilder()
@@ -76,7 +86,10 @@ class A1Z26Processor : TextProcessor {
             var prevWasSpace = false
             for (c in input) {
                 when {
-                    c.isLetter() -> {
+                    // Only the 26 ASCII letters have a position in this alphabet. `Char.isLetter()`
+                    // is true for thousands of other characters (ü, श, ٣ ...), which used to be
+                    // turned into nonsense numbers such as 188; those are passed through unchanged.
+                    c in 'A'..'Z' || c in 'a'..'z' -> {
                         val n = (c.uppercaseChar() - 'A') + 1
                         if (prevWasNumber) sb.append(numberSep)
                         sb.append(n)
@@ -98,23 +111,27 @@ class A1Z26Processor : TextProcessor {
             return sb.toString().trim()
         }
 
-        // Numbers become letters. Number separators are dropped, a word separator becomes a
-        // single space and any other punctuation is kept as written.
-        val sepChar = numberSep.single()
-        val effectiveSep = if (sepChar == ' ' || input.contains(sepChar)) sepChar else ' '
+        // Numbers become letters; see the two separator sets at the top of this function. Punctuation
+        // stays as written, and a number outside 1-26 is refused instead of guessed at.
         val sb = StringBuilder()
-        for (m in Regex("\\d+|\\D+").findAll(input)) {
+        var atWordBreak = false
+        for (m in Regex("\\d+|[^\\d]+").findAll(input)) {
             val token = m.value
             if (token.all { it.isDigit() }) {
-                val v = token.toIntOrNull() ?: throw Errors.a1z26()
-                if (v !in 1..26) throw Errors.a1z26()
-                sb.append(('A'.code + v - 1).toChar())
+                val value = token.toIntOrNull() ?: throw Errors.a1z26()
+                if (value !in 1..26) throw Errors.a1z26()
+                if (atWordBreak && sb.isNotEmpty()) sb.append(' ')
+                atWordBreak = false
+                sb.append(('A'.code + value - 1).toChar())
             } else {
-                val hasWordBreak = token.any { it == '/' || it == '|' } ||
-                    (effectiveSep != ' ' && token.any { it.isWhitespace() })
-                val literal = token.filter { it != '/' && it != '|' && it != effectiveSep && !it.isWhitespace() }
-                if (literal.isNotEmpty()) sb.append(literal)
-                if (hasWordBreak) sb.append(' ')
+                val wordBreak = token.any { it in wordSeparators }
+                val literal = token.filterNot { it.isDigit() || it in numberSeparators || it in wordSeparators }
+                if (literal.isNotEmpty()) {
+                    if (atWordBreak && sb.isNotEmpty()) sb.append(' ')
+                    sb.append(literal)
+                    atWordBreak = false
+                }
+                if (wordBreak) atWordBreak = true
             }
         }
         return sb.toString().trimEnd()

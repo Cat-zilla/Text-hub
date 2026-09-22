@@ -42,6 +42,7 @@ class PlayfairProcessor : TextProcessor {
                 label = "Keyword",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "e.g. playfair example",
                 sensitive = true,
             ),

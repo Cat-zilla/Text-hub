@@ -291,6 +291,7 @@ class LeetProcessor : TextProcessor {
                 "Making text harder to pick up in casual searches",
             ),
             warnings = listOf(
+                "The level is a presentation choice that is not stored in the text, so decoding with another level maps the digits and letters differently.",
                 "Obfuscation only, and not reversible in every case: decoding maps 1 to l, 3 to e, " +
                     "4 to a, 5 to s, 7 to t, 0 to o.",
             ),

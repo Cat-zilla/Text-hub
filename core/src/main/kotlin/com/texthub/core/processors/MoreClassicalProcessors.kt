@@ -37,6 +37,7 @@ class BeaufortProcessor : TextProcessor {
                 label = "Secret key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "Letters only, e.g. KEY",
                 sensitive = true,
             ),
@@ -128,6 +129,7 @@ class AutokeyProcessor : TextProcessor {
                 label = "Primer key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "e.g. QUEENLY",
                 sensitive = true,
             ),
@@ -605,6 +607,7 @@ class CaesarBruteForceProcessor : TextProcessor {
             convention = "Each line is numbered with the shift that produced it.",
         ),
         keywords = listOf("caesar", "bruteforce", "all shifts", "crack"),
+        oneWay = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {

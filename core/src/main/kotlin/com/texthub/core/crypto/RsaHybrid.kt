@@ -122,6 +122,26 @@ object RsaHybrid {
 
     private val random = SecureRandom()
 
+    /**
+     * Unwraps a content encryption key of a JWE token (RFC 7516) with the private key.
+     * `alg` is the token's own `alg` value: RSA-OAEP uses SHA-1, RSA-OAEP-256 uses SHA-256.
+     */
+    fun unwrapJweCek(wrapped: ByteArray, alg: String, keyText: String): ByteArray {
+        val privateKey = RsaPem.privateKey(keyText)
+        val transformation = when (alg) {
+            "RSA-OAEP" -> "RSA/ECB/OAEPWithSHA-1AndMGF1Padding"
+            "RSA-OAEP-256" -> TRANSFORMATION
+            else -> throw Errors.jweAlg(alg, "RSA-OAEP + AES-GCM")
+        }
+        return try {
+            val cipher = Cipher.getInstance(transformation)
+            cipher.init(Cipher.DECRYPT_MODE, privateKey)
+            cipher.doFinal(wrapped)
+        } catch (e: GeneralSecurityException) {
+            throw Errors.rsaDecrypt()
+        }
+    }
+
     fun isAvailable(): Boolean = try {
         Cipher.getInstance(TRANSFORMATION)
         true

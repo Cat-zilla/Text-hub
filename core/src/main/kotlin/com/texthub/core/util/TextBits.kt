@@ -123,3 +123,16 @@ fun String.asciiLetters(): String = filter { it.isAsciiLetter() }.uppercase()
 
 /** Keeps ASCII letters and digits, uppercased (keys for the alphanumeric Playfair/ADFGX grids). */
 fun String.asciiLettersAndDigits(): String = filter { it.isAsciiLetter() || it.isAsciiDigit() }.uppercase()
+
+/**
+ * True when the bytes are valid UTF-8 (the text survives a round trip through UTF-8 encoding).
+ *
+ * Used by the text-oriented decoders: showing replacement characters for a payload that was
+ * written with a different alphabet or format is a silently wrong answer, so those tools refuse
+ * the result and explain what to change instead.
+ */
+fun ByteArray.isValidUtf8(): Boolean = String(this, Charsets.UTF_8).toByteArray(Charsets.UTF_8).contentEquals(this)
+
+/** The bytes as text, or a friendly failure when they are not text at all. */
+fun ByteArray.asTextOrFail(message: String): String =
+    if (isValidUtf8()) String(this, Charsets.UTF_8) else throw com.texthub.core.model.ToolException(message)

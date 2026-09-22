@@ -42,7 +42,8 @@ class BaconProcessor : TextProcessor {
                 "Steganography exercises",
                 "Classical cipher study",
             ),
-            warnings = listOf("A classical cipher - not modern secure encryption."),
+            warnings = listOf(
+                "The 24-letter and 26-letter variants share the same A/B output, so the variant cannot be read back from a payload: choose the one the message was written with.","A classical cipher - not modern secure encryption."),
             convention = "A = 0, B = 1, five symbols per letter. Groups are separated by spaces and words by /.",
         ),
         keywords = listOf("bacon", "baconian", "steganography", "ab"),

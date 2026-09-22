@@ -38,6 +38,7 @@ class XorProcessor : TextProcessor {
                 label = "Key",
                 kind = ParamKind.TEXT,
                 defaultValue = "",
+                required = true,
                 hint = "Any text",
                 sensitive = true,
             ),

@@ -51,7 +51,8 @@ class CaseConverterProcessor : TextProcessor {
                 "Turning a heading into a variable or file name",
                 "Fixing text typed with the caps lock on",
             ),
-            warnings = listOf("A plain text transformation - it does not hide anything."),
+            warnings = listOf(
+                "The mode is the whole operation: decoding with another mode rewrites the text again.","A plain text transformation - it does not hide anything."),
             convention = "Identifier styles split on spaces, underscores, hyphens and case changes.",
         ),
         keywords = listOf("case", "upper", "lower", "title", "camel", "snake", "kebab", "sentence"),

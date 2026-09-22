@@ -136,7 +136,7 @@ class SecureToolsTest {
         assertTrue(failure("aesctr", payload, mapOf("password" to "nope"), Direction.DECODE).isNotEmpty())
         val tampered = payload.dropLast(8) + "AAAAAAA="
         assertTrue(failure("aesctr", tampered, params, Direction.DECODE).isNotEmpty())
-        assertTrue(failure("aesctr", "not base64!!", params, Direction.DECODE).contains("encrypted data"))
+        assertTrue(failure("aesctr", "not base64!!", params, Direction.DECODE).contains("not a Text Hub"))
     }
 
     @Test fun aesCtrIsNotDeterministic() {
@@ -219,7 +219,10 @@ class SecureToolsTest {
         )
         val tampered = payload.dropLast(6) + "AAAAAA"
         assertTrue(failure("rsa", tampered, mapOf("key" to pair), Direction.DECODE).isNotEmpty())
-        assertTrue(failure("rsa", "not-a-payload", mapOf("key" to pair), Direction.DECODE).contains("RSA message"))
+        assertTrue(
+            failure("rsa", "not-a-payload", mapOf("key" to pair), Direction.DECODE)
+                .contains("not a Text Hub RSA payload"),
+        )
     }
 
     @Test fun rsaPemHandlingExplainsWhatIsMissing() {
