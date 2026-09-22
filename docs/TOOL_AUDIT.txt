@@ -1,3 +1,7 @@
+Text Hub 1.5.0 — full registry report, written by ToolAuditReportTest (:core:test)
+Every tool: id, category, round trip (rt), default parameters, behaviour on unusual input in both directions.
+Regenerate with: gradle :core:test --tests '*ToolAuditReportTest*'
+
 Text Hub tool audit — 73 tools
 documented + findable: 73/73
 ------------------------------------------------------------------------------------------------------------------------

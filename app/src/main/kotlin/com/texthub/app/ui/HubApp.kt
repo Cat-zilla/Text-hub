@@ -106,6 +106,7 @@ fun HubApp(
                         },
                         onClearInput = viewModel::clearInput,
                         onClearOutput = viewModel::clearOutput,
+                        onResetParams = viewModel::resetParams,
                     )
                     Screen.SETTINGS -> SettingsScreen(
                         state = state,
@@ -139,6 +140,7 @@ fun HubApp(
                         dismissPicker()
                     },
                     onToggleFavorite = viewModel::toggleFavorite,
+                    onMoveFavorite = viewModel::moveFavorite,
                     onDismiss = ::dismissPicker,
                 )
             }

@@ -118,3 +118,19 @@ The 23 tools added in 1.3.0 change nothing about data handling:
   systems — that is an Android platform property, not something Text Hub can change.
 * Screenshots and the recent-apps thumbnail can show your text. Text Hub does not set
   `FLAG_SECURE`, because that would also block the copy/paste workflow it is built around.
+
+---
+
+## Temporary data (1.5.0)
+
+The only disposable data the app holds is:
+
+* remembered tool settings (parameter values per tool id),
+* the recent-tools list.
+
+Settings shows the current size of that store in B / KB / MB and offers a single *Clear* action with
+a confirmation that lists what will be removed and what will be kept. Everything else is
+configuration the user chose and is **kept**: favourites and their order, theme, accent colour and
+the currently selected tool. Text, passwords and keys are never stored in the first place, so
+clearing cannot delete - or preserve - them; they exist only in memory for the duration of the
+action.

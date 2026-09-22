@@ -103,7 +103,7 @@ Gradle 8.2, Kotlin 1.9.22, AGP 8.1.4, Compose BOM 2023.10.01, minSdk 24, targetS
 | [x] | Documentation drift fixed: the reference and README now use the registry's exact tool names (`Hash (one-way)`, `Leetspeak (1337)`) — a new test asserts every tool appears in `docs/TOOLS.md` and `README.md` |
 | [x] | New `ToolAuditTest` sweeps all 73 tools (parameters, defaults, sensitive flags, ten unusual inputs × both directions, searchability, claim discipline, error friendliness, key-size enforcement); `ToolAuditReportTest` writes `core/build/tool-audit.txt` with a per-tool report |
 | [x] | `:core:test` → **260 tests, 0 failures** |
-| [x] | Release APK `apk/TextHub-1.4.2-release.apk` signed with the same key; `aapt2 dump permissions` shows no `INTERNET` |
+| [x] | Release APK (`apk/TextHub-<version>-release.apk`) signed with the same key; `aapt2 dump permissions` shows no `INTERNET` |
 
 ## Round 5 change (version 1.4.1)
 
@@ -148,3 +148,44 @@ Gradle 8.2, Kotlin 1.9.22, AGP 8.1.4, Compose BOM 2023.10.01, minSdk 24, targetS
 * The release APK is signed with the bundled demo keystore — replace it before publishing.
 * No on-device screenshot pass could be produced in this environment; the checklist above is the
   script for that final review.
+
+---
+
+## Round 7 - final fix, compatibility and QA (1.5.0)
+
+Automated (all in `:core:test`, 317 tests):
+
+| Check | Test |
+| --- | --- |
+| Clearing temporary data keeps favourites, theme and order | `PrefsModelTest.temporaryDataNeverTouchesTheFavouriteList`, `...clearTemporaryDataRemovesOnlyTemporaryData` |
+| Favourite order survives a move in every direction and is clamped at the ends | `PrefsModelTest.dragMovesAFavouriteToTheDroppedPosition` and neighbours |
+| AES key size mismatch is refused; legacy payloads decrypt | `SecureToolsTest.theKeySizeIsRecordedForModernPayloadsAndLegacyOnesStillRead`, `ToolReviewPassTwoTest.payloadsWrittenByEarlierVersionsStillDecrypt` |
+| External formats (OpenSSL `enc`, JWE) decrypt, and unusable ones explain what is missing | `ExternalFormatsTest` (19 tests) |
+| Every parameter either round-trips or fails with a friendly sentence | `ParamDisciplineAuditTest` (4 tests) |
+| Only useful controls are visible; settings validate; empty input is safe | `ToolReviewPassTwoTest` (13 tests) |
+| All 73 tools still round-trip and search correctly | `RegistryTest`, `ToolAuditTest`, `ToolAuditReportTest` |
+
+Manual (an emulator is not available in this environment - see the build notes):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Install the release APK, launch it | Opens on the tool picker, dark AMOLED theme |
+| 2 | Favourite three tools, long-press and drag one to the top, kill the app, reopen | New order is shown |
+| 3 | Drag a favourite in the main list or in search results | Nothing moves - only Favourites reorders |
+| 4 | Settings → Temporary data | Size shown; *Clear* asks first; afterwards the size is 0 B and favourites are intact |
+| 5 | Open AES-GCM, encrypt at 128-bit, switch to 256-bit, decrypt | Refused with a sentence naming the 128-bit key |
+| 6 | Paste an OpenSSL `enc -base64` file into AES-CBC + HMAC (Format = OpenSSL enc) | Decrypts; the iteration count is reported for PBKDF2 files |
+| 7 | Paste a truncated Base64 block | Friendly sentence naming what is missing |
+| 8 | Open a digest tool (SHA-256) | One operation only: no direction switch, no swap, no duplicate Apply |
+| 9 | Open AES-GCM with a long password, expand *Additional encryption settings* | Panel scrolls on a small screen, keyboard never hides the buttons |
+| 10 | Press *Reset* on a tool with many settings | Documented defaults return, inline errors clear |
+
+### Follow-up: 1.5.1 drag check (device)
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Long-press a favourite and hold still | The row lifts (raised, slightly larger) with a haptic tick; nothing else moves |
+| 2 | Drag it slowly up and down without leaving the row | The row follows the finger smoothly; the highlighted slot changes only after about a full row of travel; there is no jumping |
+| 3 | Drag it to the bottom edge and hold | The list scrolls slowly while the row stays under the finger |
+| 4 | Release | The row settles into the highlighted slot once, and the new order survives a restart |
+| 5 | Type something in the picker search while on Favourites | The drag handle disappears and rows cannot be dragged until the search is cleared |

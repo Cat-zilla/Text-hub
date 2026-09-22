@@ -4,32 +4,29 @@
     <string name="app_subtitle">Encode • Decode • Transform</string>
 
     <!-- Actions -->
-    <string name="action_process">Process Text</string>
+    <string name="action_swap_into">Swap &amp; %1$s</string>
+    <string name="action_use_as_input">Use result as input</string>
     <string name="action_copy">Copy</string>
-    <string name="action_swap">Swap</string>
     <string name="action_clear">Clear</string>
-    <string name="action_share">Share</string>
     <string name="action_paste">Paste</string>
-    <string name="action_type_here">Type here</string>
-    <string name="action_select_all">Select all</string>
-    <string name="action_done">Done</string>
-    <string name="action_close">Close</string>
     <string name="action_back">Back</string>
 
     <!-- Main screen -->
     <string name="label_input">Input</string>
     <string name="label_output">Output</string>
+    <string name="action_reset">Reset</string>
+    <string name="label_advanced_encryption">Additional encryption settings</string>
+    <string name="label_advanced_settings">Additional settings</string>
+    <string name="label_advanced_sub">Optional: external formats, digests and formats that are only needed in special cases</string>
+    <string name="msg_single_operation">Single operation: %1$s</string>
+    <string name="msg_symmetric_operation">Symmetric operation: %1$s (the same either way)</string>
     <string name="label_parameters">Parameters</string>
-    <string name="label_tool">Tool</string>
     <string name="hint_input">Type or paste text here</string>
     <string name="hint_output">The result appears here</string>
     <string name="cd_select_tool">Select tool</string>
     <string name="cd_tool_info">About this tool</string>
     <string name="cd_settings">Settings</string>
-    <string name="cd_clear_input">Clear input</string>
     <string name="cd_clear_output">Clear output</string>
-    <string name="cd_copy_output">Copy output</string>
-    <string name="cd_swap">Swap input and output</string>
     <string name="cd_share_output">Share output</string>
     <string name="cd_hide_keyboard">Hide keyboard</string>
     <string name="cd_favorite">Add to favourites</string>
@@ -37,11 +34,9 @@
 
     <string name="msg_copied">Copied to clipboard</string>
     <string name="msg_nothing_to_copy">Nothing to copy yet</string>
-    <string name="msg_processing">Processing…</string>
     <string name="msg_auto_process_hint">Results update as you type</string>
     <string name="msg_symmetric_hint">Symmetric — the same transformation both ways</string>
     <string name="privacy_footer">Your text is processed locally on this device.</string>
-    <string name="empty_output">—</string>
 
     <!-- Tool picker -->
     <string name="picker_title">Choose a tool</string>
@@ -49,13 +44,17 @@
     <string name="picker_all">All</string>
     <string name="picker_favorites">Favourites</string>
     <string name="picker_recent">Recent</string>
+    <string name="picker_favorites_hint">Long-press a favourite and drag it to reorder</string>
+    <string name="picker_no_favorites">No favourites yet. Tap the star on any tool to add it here.</string>
+    <string name="cd_drag_favorite">Reorder favourite</string>
     <string name="picker_no_results">No tool matches “%1$s”</string>
-    <string name="picker_count">%1$d tools</string>
+    <plurals name="picker_count">
+        <item quantity="one">%1$d tool</item>
+        <item quantity="other">%1$d tools</item>
+    </plurals>
 
     <!-- Tool info -->
-    <string name="info_title">About this method</string>
     <string name="info_requires_key">Requires a key</string>
-    <string name="info_no_key">No key required</string>
     <string name="info_security">Security</string>
     <string name="info_secure">Modern authenticated encryption</string>
     <string name="info_not_secure">Not encryption — provides no confidentiality</string>
@@ -91,9 +90,19 @@
     <string name="settings_copy_confirmation_sub">Brief message after copying</string>
     <string name="settings_privacy">Privacy</string>
     <string name="settings_privacy_body">Text Hub never sends your text, keys or passwords anywhere. All processing happens locally on this device and the app works offline. No analytics, no advertising, no trackers.</string>
-    <string name="settings_clear_data">Clear temporary data</string>
-    <string name="settings_clear_data_sub">Clears remembered parameters, recents and favourites</string>
-    <string name="settings_history">History</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_storage_sub">Text Hub keeps a few harmless preferences on this device and nothing else.</string>
+    <string name="settings_temporary_data">Temporary data</string>
+    <string name="settings_temporary_data_size">%1$s stored</string>
+    <string name="settings_temporary_data_body">Remembered tool settings and the recent-tools list. This is the only disposable data the app holds.</string>
+    <string name="settings_temporary_data_kept">Favourites, theme, accent colour and the selected tool are kept.</string>
+    <string name="clear_data_title">Clear temporary data?</string>
+    <string name="clear_data_removed">Will be removed</string>
+    <string name="clear_data_removed_list">\u2022 Remembered tool settings (nothing secret is ever stored)\n\u2022 The recent-tools list</string>
+    <string name="clear_data_kept">Will be kept</string>
+    <string name="clear_data_kept_list">\u2022 Favourites and their order\n\u2022 Theme, accent colour and the selected tool\n\u2022 Your text: it is never stored, and neither are passwords or keys</string>
+    <string name="clear_data_confirm">Clear</string>
+    <string name="action_cancel">Cancel</string>
     <string name="settings_history_body">History is off by default and Text Hub never stores your text, encryption passwords or AES keys. Only tool preferences (favourites, recents, theme and non-secret parameters) are kept on this device.</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version</string>

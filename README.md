@@ -14,15 +14,139 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.4.2 (versionCode 6) |
+| Version | 1.5.1 (versionCode 8) |
 | Tools | 73, in 5 categories (audited: see §9) |
-| Tests | 260 unit tests, all green (`:core:test`) |
+| Tests | 329 unit tests, all green (`:core:test` + `:app:testDebugUnitTest`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
 | Permissions | none (no `INTERNET`, nothing else) |
 | Runtime dependencies | AndroidX/Compose only — no third-party crypto, JSON or networking library |
 | Developer | Catzilla |
+
+---
+
+## What's new in 1.5.1
+
+**Favourites reordering was rebuilt - the row no longer jumps while you drag it.** The old gesture
+reordered the list *during* the drag: it moved the row one slot at a time as soon as half a row had
+been covered, ran the list's own placement animation at the same time as the visual translation, and
+used a step that ignored the gap between rows. The animation and the translation fought each other
+and the half-row threshold flipped between two slots from one frame to the next, which is exactly
+the up-and-down wobble that was reported. Now:
+
+* the lifted row follows the finger exactly, with a haptic tick when it is picked up;
+* **the order does not change while the drag is in progress** - the slot the row would land on is
+  highlighted instead, and the list follows the finger if you drag near the top or bottom edge;
+* the step used for the arithmetic is the real row height plus the gap, measured from the rows
+  themselves, and a full 60% of a row has to be covered before the highlighted slot changes (so a
+  shaky finger cannot make it flicker);
+* releasing commits the move **once**, so the stored order is written one time per drag instead of
+  on every frame;
+* dragging is offered only on the plain favourites list - while a search is active the rows are a
+  subset, and a drop would otherwise move the wrong entry in the stored order.
+
+The drag arithmetic is unit-tested (`DragReorderTest`, 12 tests) including a sweep that asserts the
+target position can never move backwards as the finger travels - the mathematical signature of the
+old bug.
+
+**Other bugs found and fixed in the same pass**
+
+| Fixed | What was wrong |
+| --- | --- |
+| Dragging in a *filtered* favourites list could reorder the wrong tools | The drag now only exists on the unfiltered list; the hint text says so by disappearing with the search box in use |
+| A pasted parameter that no longer exists (removed choice, number now out of range) was restored as a broken setting | Remembered parameters are validated against the tool as it is today; anything that no longer fits is dropped and the default is used |
+| Typing or pasting a very large text counted characters/words/lines on the UI thread | Above 20 000 characters the count runs on a background thread, and the result's statistics are measured in the same background step as the processing |
+| A1Z26 turned any non-ASCII letter into a nonsense number (ü became 188) because `Char.isLetter()` matches thousands of characters | Only the 26 ASCII letters have a position; everything else passes through unchanged, and the info sheet says so |
+| A1Z26 written with a different separator could not be read back | Decoding accepts every separator people actually type (space, hyphen, comma, dot, slash, pipe) and refuses values outside 1-26 |
+| The "nothing here" message in the picker blamed an empty search even when filters were empty | The two cases now say what is actually true |
+
+Test total: **329** (`:core:test` 317 + `:app:testDebugUnitTest` 12), all green; `:app:lintDebug`
+clean.
+
+---
+
+## What's new in 1.5.0
+
+This release is the *final fix, compatibility and QA* round. Nothing was redesigned: the toolset,
+the payload formats, the privacy model and the look stay as they were, and the changes below are
+the ones the review actually justified.
+
+**1. Temporary data can be cleared - and Favourites are never touched.** Settings now ends with a
+standalone *Temporary data* card that shows how much disposable data the app holds (in B / KB / MB),
+explains what is stored, and offers *Clear*. A confirmation lists exactly what will be removed
+(remembered tool settings, the recent-tools list) and what will be kept (**your favourites and their
+order**, theme, accent colour, selected tool). The size on screen is recomputed immediately after
+clearing. Nothing secret was ever stored, and clearing never touches text, passwords, keys or
+favourites.
+
+**2. The Favourites section can be reordered by dragging.** Long-press a favourite to lift it - the
+row is drawn raised and slightly enlarged - then drag it anywhere in the list. Each move is written
+to preferences immediately, so the order survives a restart. The main list, search results,
+categories and recents keep their fixed order and cannot be dragged.
+
+**3. Controls are generated from what a tool can actually do.** The action button carries the
+tool's own verb in the current direction ("Encrypt", "Decode", "Hash", "Compare"), never a generic
+"Process"; swap is hidden wherever the result cannot be pushed back (digests, checksums,
+comparisons, analysis); a direction switch appears only when it changes something, and symmetric and
+single-operation tools say so in one line instead. The second pass also removed the two genuinely
+duplicated buttons left in the main screen (the output card had two *Clear* buttons, and *Type here*
+only refocused the field above it) and moved the last two "wall of settings" cases - Enigma's
+Ringstellung and the regex flags - under the collapsed section.
+
+**4. Parameters are recorded, validated and enforced - never guessed.** A new audit
+(`ParamDisciplineAuditTest`) encodes every tool with its defaults, decodes with one setting changed,
+and requires either the original text or a friendly refusal. It found two real defects, both fixed:
+Base58/Base85 decoding with the wrong variant returned confident mojibake instead of failing, and
+UTF-16/UTF-32 decoding with `format = decimal` silently read decimal tokens as hexadecimal. Tools
+whose settings genuinely define the transform (Bacon's 24/26-letter variants, A1Z26 separators,
+Scytale's diameter, Baudot's alphabet, case/leet/regex, the Base58/Base85 variants) are listed as
+documented exceptions and say so in their info sheet.
+
+**5. External formats.** OpenSSL `enc` files (legacy MD5 and SHA-256, PBKDF2 with configurable
+iterations, wrapped or unwrapped) and JWE compact tokens (`dir` + A256GCM, `A128CBC-HS256`) are
+accepted with their settings, and the errors explain what was missing rather than claiming the data
+"was not made by Text Hub".
+
+**6. Additional Encryption.** Every encryption tool keeps the common case on top - password, key
+size, a format choice - and moves mode, padding, character encoding, IV/nonce and its format,
+input/output format, tag length, AAD and AAD format into a collapsed *Additional encryption
+settings* section with defaults that match the ordinary case, inline validation for impossible
+combinations, and a *Reset* action.
+
+**7. Full second pass over all 73 tools** (`ToolReviewPassTwoTest`, `ParamDisciplineAuditTest`,
+plus the earlier audits): control visibility, parameter validation, empty input, Unicode, round
+trips, error friendliness, security claims, ids and searchability, payload compatibility. Payloads
+frozen from 1.4.1 and 1.4.2 are decrypted in the tests to prove no update strands data.
+
+Test total: **317** (`:core:test`, all green).
+
+---
+
+## What's new in 1.4.2
+
+**Fixed: the AES Key size setting is now honoured on decryption.** Previously an AES-128 message
+decrypted with the AES-256 setting (and any other combination) succeeded, because the setting was
+only read when encrypting and decryption guessed the key size. Encryption now records the size in
+the payload's `kdfId` byte (`0x02` = 256-bit; `0x01` remains "legacy, size not recorded") and
+decryption derives exactly that key. A mismatch is **refused** with a sentence that names the size
+the message needs, so changing the setting can never silently succeed. Messages written by
+1.3.0–1.4.1 still decrypt, and report which size they actually use.
+
+**The whole toolset was audited (all 73 tools).** The audit added in this round found and fixed
+three real defects, and two documentation ones:
+
+| Found | Fix |
+| --- | --- |
+| *Spelling alphabet* crashed with an `ArrayIndexOutOfBoundsException` on any non-ASCII letter or digit (`Grüße`, `नमस्ते`, `٣`): it used `Char.isLetter()`, which is true for thousands of characters, to index a 26-entry table | Only ASCII `A–Z`/`0–9` are spelled; anything else is refused with a friendly sentence that lists the characters it cannot spell |
+| Sixteen tools could not be found by typing their own id (`utf16`, `railfence`, `aescbc`, `textdiff`, …) because ids were missing from the search index | The search index now contains every id plus a punctuation-free spelling of the name, so `railfence` *and* `rail fence` both work |
+| A non-ASCII letter in a cipher key was silently turned into a bogus A–Z shift (Vigenère, Beaufort, Autokey, Playfair, ADFGX, custom alphabets) | Keys are filtered to ASCII letters (and digits where the alphabet has them), so no invalid index can be produced |
+| The reference and README called two tools by names the app never uses | Documentation now matches the registry exactly, and a test enforces it |
+
+New regression tests lock all of this down: `ToolAuditTest` sweeps every tool's parameters,
+defaults, sensitive flags, behaviour on ten unusual inputs in both directions, searchability by id
+and name, claim discipline, error friendliness and key-size enforcement; `ToolAuditReportTest`
+writes `core/build/tool-audit.txt`, a per-tool report of the whole registry. Test total: **260**.
 
 ---
 
@@ -233,6 +357,25 @@ the payload's `kdfId` byte, and decryption uses exactly that size:
 Full specification, validation rules, the compatibility contract and the security reasoning:
 [`docs/ENCRYPTION_FORMAT.md`](docs/ENCRYPTION_FORMAT.md).
 
+**Every setting that affects the result is recorded or refused - nothing is guessed.** Key size,
+mode, padding, character encoding, IV/nonce and its format, tag length and AAD are parameters, not
+separate tools; the ones that change the bytes on the wire are stored in the payload, and the ones
+that cannot be stored (an OpenSSL password, a JWE recipient key, a Base58 alphabet) are enforced the
+moment they are used: a payload that does not decode to text with the selected variant is refused
+with a sentence pointing at the setting, never returned as mojibake. `ParamDisciplineAuditTest`
+re-runs that rule across the whole registry.
+
+**Files from other tools are accepted when their settings are identifiable.** *AES-CBC + HMAC* can
+read OpenSSL `enc` output (with or without `-pbkdf2`, any iteration count, `-md` MD5/SHA-256/
+SHA-512, an explicit `-S` salt, and `-nosalt` output refused with an explanation). *AES-GCM with
+your own key* reads JWE compact tokens with `alg = dir`, and *RSA-OAEP + AES-GCM* reads tokens with
+`alg = RSA-OAEP` / `RSA-OAEP-256` - in both cases any of the six standard AES content-encryption
+algorithms (`A128GCM`, `A192GCM`, `A256GCM`, `A128CBC-HS256`, `A192CBC-HS384`, `A256CBC-HS512`).
+When something is missing - no salt, an unknown `alg` or `enc`, a truncated block - the error says
+which piece is missing instead of claiming the data came from somewhere else. No compatibility is
+claimed that is not covered by a test: `ExternalFormatsTest` carries real `openssl enc` output and
+real JWE tokens.
+
 `RSA Key Pair Generator` creates a 2048/3072/4096-bit pair on the device, prints both PEM blocks
 (X.509 public, PKCS#8 private) and a SHA-256 fingerprint of the public key. Nothing is written to
 disk: copy the text yourself if you want to keep it.
@@ -357,13 +500,14 @@ Notes:
 
 | File | Size | md5 |
 | --- | --- | --- |
-| `apk/TextHub-1.4.2-release.apk` (signed) | 9,523,872 B | `b7cbed1bb55112d4248eadeb403d05a0` |
-| `apk/TextHub-1.4.2-debug.apk` | 14,301,140 B | `6715cc312ca54649f174b2f3eece9bf3` |
+| `apk/TextHub-1.5.1-release.apk` (signed) | 9,566,976 B | `9f129cee14f3e126f29881184b598414` |
+| `apk/TextHub-1.5.1-debug.apk` | 14,371,016 B | `c62dc3ef9d80c4ae727bbc213af478e6` |
 
-Both report `versionName 1.4.2`, `versionCode 6`, `minSdk 24`, `targetSdk 34`, and declare **no
+Both report `versionName 1.5.1`, `versionCode 8`, `minSdk 24`, `targetSdk 34`, and declare **no
 permissions** other than Android's own `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
-`TextHub-1.4.2-source-and-keys.zip` contains the full source together with the release keystore,
-so updates can be signed with the same key.
+`TextHub-1.5.1-source.zip` contains the complete source project, documentation, Gradle configuration,
+tests, resources, icons, themes and the release keystore, so updates can be signed with the same
+key.
 
 ---
 
@@ -416,7 +560,7 @@ round-trip, classification, documentation and error-message checks. JUnit XML re
 
 Outside the sandbox, one manual pass is worth doing on a device: open the picker and scroll to the
 end, switch accents, generate a key pair with RSA and check the icon on the home screen. The
-device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md).
+device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`docs/RELEASE_REPORT_1.5.1.md`](docs/RELEASE_REPORT_1.5.1.md) records what this release changed, what was verified with tooling and what could not be verified without a device.
 
 ---
 
@@ -501,8 +645,8 @@ border, never by colour alone.
 ```
 TextHub/
 ├── apk/
-│   ├── TextHub-1.4.2-release.apk        signed release build
-│   └── TextHub-1.4.2-debug.apk          debug build
+│   ├── TextHub-1.5.1-release.apk        signed release build
+│   └── TextHub-1.5.1-debug.apk          debug build
 ├── core/                                plain JVM library: algorithms + tests
 │   └── src/
 │       ├── main/kotlin/com/texthub/core/

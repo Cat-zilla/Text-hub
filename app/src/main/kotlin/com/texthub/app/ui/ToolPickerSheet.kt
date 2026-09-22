@@ -1,6 +1,8 @@
 package com.texthub.app.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +12,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -45,6 +47,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +65,14 @@ import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.core.ToolRegistry
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolMeta
+import kotlin.math.roundToInt
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 
 private enum class PickerFilter { ALL, FAVORITES, RECENT }
 
@@ -67,10 +81,11 @@ private enum class PickerFilter { ALL, FAVORITES, RECENT }
 fun ToolPickerSheet(
     sheetState: SheetState,
     currentToolId: String,
-    favorites: Set<String>,
+    favorites: List<String>,
     recents: List<String>,
     onSelect: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
+    onMoveFavorite: (Int, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -82,7 +97,9 @@ fun ToolPickerSheet(
         val searched = ToolRegistry.search(query)
         when (filter) {
             PickerFilter.ALL -> searched
-            PickerFilter.FAVORITES -> searched.filter { it.id in favorites }
+            PickerFilter.FAVORITES -> favorites.mapNotNull { id ->
+                ToolRegistry.all.firstOrNull { it.meta.id == id }?.meta
+            }
             PickerFilter.RECENT -> recents.mapNotNull { id -> ToolRegistry.all.firstOrNull { it.meta.id == id }?.meta }
                 .filter { it.searchIndex.contains(query.trim().lowercase()) }
         }
@@ -132,7 +149,7 @@ fun ToolPickerSheet(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = stringResource(R.string.picker_count, tools.size),
+                    text = pluralStringResource(R.plurals.picker_count, tools.size, tools.size),
                     style = MaterialTheme.typography.labelMedium,
                     color = mutedTextColor,
                 )
@@ -192,6 +209,18 @@ fun ToolPickerSheet(
                 )
             }
 
+            // Reordering only exists here, in the favourites list: the full tool list, search
+            // results, the categories and the recents have a fixed, meaningful order, so they do
+            // not accept a drag.
+            if (filter == PickerFilter.FAVORITES && tools.size > 1 && query.isBlank()) {
+                Text(
+                    text = stringResource(R.string.picker_favorites_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(start = Spacing.sm, top = Spacing.xs),
+                )
+            }
+
             Spacer(Modifier.height(Spacing.sm))
 
             if (tools.isEmpty()) {
@@ -202,11 +231,33 @@ fun ToolPickerSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = stringResource(R.string.picker_no_results, query),
+                        text = when {
+                            filter == PickerFilter.FAVORITES && favorites.isEmpty() ->
+                                stringResource(R.string.picker_no_favorites)
+                            else -> stringResource(R.string.picker_no_results, query)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = mutedTextColor,
                     )
                 }
+            } else if (filter == PickerFilter.FAVORITES) {
+                // The Favourites section is the only list that can be dragged: the main list, search
+                // results and the categories keep their fixed order.
+                FavoritesToolList(
+                    metas = tools,
+                    currentToolId = currentToolId,
+                    // Reordering is only offered on the plain favourites list: while a search is
+                    // active the rows shown are a subset, and dropping one would move the wrong
+                    // entry in the stored order.
+                    reorderable = query.isBlank(),
+                    onSelect = onSelect,
+                    onToggleFavorite = onToggleFavorite,
+                    onMove = onMoveFavorite,
+                    listState = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
             } else {
                 LazyColumn(
                     state = listState,
@@ -247,6 +298,182 @@ fun ToolPickerSheet(
     }
 }
 
+/**
+ * The favourites list with long-press drag-and-drop reordering.
+ *
+ * The favourites list, and only the favourites list, can be reordered.
+ *
+ * How the gesture works, and why it no longer wobbles:
+ *
+ *  * long-pressing a row lifts it - it is drawn raised, slightly enlarged and above the others - and
+ *    it then follows the finger exactly, with a haptic tick to confirm the lift;
+ *  * **the list order does not change while the drag is in progress**. The previous version moved
+ *    the row one slot at a time with a placement animation running at the same time as the visual
+ *    translation, and it advanced the slot as soon as half a row had been covered. The animation and
+ *    the translation fought each other and the half-row threshold flipped between two slots from
+ *    one frame to the next, which is what made the row jump up and down;
+ *  * the slot the row would land on is shown instead, as a highlighted row that the floating row
+ *    moves over;
+ *  * near the top or the bottom edge the list follows the finger, a controlled number of pixels per
+ *    frame, and the visual offset is corrected by exactly the amount scrolled;
+ *  * releasing the finger commits the move once ([onMove]), so the stored order is written a single
+ *    time per drag rather than on every frame.
+ *
+ * Row height is measured from the real rows, and the step used for the arithmetic is that height
+ * plus the gap between rows - the missing gap was the second reason the old threshold wobbled.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FavoritesToolList(
+    metas: List<ToolMeta>,
+    currentToolId: String,
+    reorderable: Boolean,
+    onSelect: (String) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val currentMetas by rememberUpdatedState(metas)
+    val currentOnMove by rememberUpdatedState(onMove)
+
+    val gapPx = with(density) { Spacing.xs.toPx() }
+    val edgePx = with(density) { 56.dp.toPx() }
+    val maxScrollStepPx = with(density) { 12.dp.toPx() }
+
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    var rowHeight by remember { mutableStateOf(0f) }
+    var edgeScroll by remember { mutableStateOf(0f) }
+
+    val stepPx = rowHeight + gapPx
+    val startIndex = draggingId?.let { id -> currentMetas.indexOfFirst { it.id == id } } ?: -1
+    val targetIndex = if (startIndex >= 0) {
+        dropTargetIndex(startIndex, dragOffset, stepPx, currentMetas.lastIndex)
+    } else {
+        -1
+    }
+
+    // Edge auto-scroll: the list keeps moving while the finger stays near an edge, and the visual
+    // offset is adjusted by exactly the amount that was scrolled, so the row stays under the finger.
+    LaunchedEffect(draggingId) {
+        while (draggingId != null) {
+            val step = edgeScroll
+            if (step != 0f) {
+                dragOffset += listState.scrollBy(step)
+            }
+            withFrameNanos { }
+        }
+    }
+
+    // A favourite that disappeared (star tapped during a drag) must not leave a floating row behind.
+    if (draggingId != null && startIndex < 0) {
+        draggingId = null
+        dragOffset = 0f
+        edgeScroll = 0f
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(bottom = Spacing.xxl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        itemsIndexed(items = metas, key = { _, meta -> meta.id }, contentType = { _, _ -> "tool" }) { index, meta ->
+            val dragging = meta.id == draggingId
+            val isDropSlot = !dragging && index == targetIndex && targetIndex != startIndex
+            Surface(
+                color = when {
+                    dragging -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                    isDropSlot -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    else -> Color.Transparent
+                },
+                shadowElevation = if (dragging) 8.dp else 0.dp,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (dragging) Modifier else Modifier.animateItemPlacement())
+                    .zIndex(if (dragging) 1f else 0f)
+                    .graphicsLayer {
+                        if (dragging) {
+                            translationY = dragOffset
+                            scaleX = 1.02f
+                            scaleY = 1.02f
+                        }
+                    }
+                    .onGloballyPositioned { coordinates ->
+                        // Rows are uniform; the measurement is taken while nothing is lifted, so a
+                        // translated row can never feed its own offset back into the arithmetic.
+                        if (draggingId == null) {
+                            val height = coordinates.size.height.toFloat()
+                            if (height > 0f && height != rowHeight) rowHeight = height
+                        }
+                    }
+                    .pointerInput(meta.id, reorderable) {
+                        if (!reorderable) return@pointerInput
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                draggingId = meta.id
+                                dragOffset = 0f
+                                edgeScroll = 0f
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragOffset += amount.y
+                                val from = currentMetas.indexOfFirst { it.id == meta.id }
+                                if (from < 0 || rowHeight <= 0f) {
+                                    // Nothing to compute with: end the drag rather than guess.
+                                    draggingId = null
+                                    dragOffset = 0f
+                                    edgeScroll = 0f
+                                    return@detectDragGesturesAfterLongPress
+                                }
+                                val info = listState.layoutInfo
+                                edgeScroll = autoScrollDelta(
+                                    rowTopPx = from * stepPx + dragOffset,
+                                    rowHeightPx = rowHeight,
+                                    viewportStartPx = info.viewportStartOffset.toFloat(),
+                                    viewportHeightPx = (info.viewportEndOffset - info.viewportStartOffset).toFloat(),
+                                    edgePx = edgePx,
+                                    maxStepPx = maxScrollStepPx,
+                                )
+                            },
+                            onDragEnd = {
+                                val id = draggingId
+                                if (id != null) {
+                                    val from = currentMetas.indexOfFirst { it.id == id }
+                                    val to = dropTargetIndex(from, dragOffset, stepPx, currentMetas.lastIndex)
+                                    if (from >= 0 && to >= 0 && to != from) currentOnMove(from, to)
+                                }
+                                draggingId = null
+                                dragOffset = 0f
+                                edgeScroll = 0f
+                            },
+                            onDragCancel = {
+                                draggingId = null
+                                dragOffset = 0f
+                                edgeScroll = 0f
+                            },
+                        )
+                    },
+            ) {
+                ToolRow(
+                    meta = meta,
+                    selected = meta.id == currentToolId,
+                    favorite = true,
+                    reorderable = reorderable,
+                    dragging = dragging,
+                    onClick = { onSelect(meta.id) },
+                    onToggleFavorite = { onToggleFavorite(meta.id) },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ToolRow(
     meta: ToolMeta,
@@ -254,12 +481,16 @@ private fun ToolRow(
     favorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    reorderable: Boolean = false,
+    dragging: Boolean = false,
 ) {
     val container = if (selected) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
     } else {
         Color.Transparent
     }
+    // Resolved here: the semantics block below is not a composable scope.
+    val dragLabel = stringResource(R.string.cd_drag_favorite)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -269,6 +500,16 @@ private fun ToolRow(
             .padding(horizontal = Spacing.sm, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (reorderable) {
+            Icon(
+                imageVector = Icons.Outlined.DragHandle,
+                contentDescription = dragLabel,
+                tint = if (dragging) MaterialTheme.colorScheme.primary else mutedTextColor,
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(end = 2.dp),
+            )
+        }
         ToolMonogram(glyph = meta.glyph, highlighted = selected)
         Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.md)) {
             Text(

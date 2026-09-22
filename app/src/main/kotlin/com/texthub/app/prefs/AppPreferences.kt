@@ -3,82 +3,128 @@ package com.texthub.app.prefs
 import android.content.Context
 import com.texthub.app.ui.theme.AccentOption
 import com.texthub.app.ui.theme.AppTheme
-import org.json.JSONObject
+import com.texthub.core.ToolRegistry
+import com.texthub.core.prefs.PrefsData
+import com.texthub.core.prefs.PrefsKeys
+import com.texthub.core.prefs.formatDataSize
 
 /**
- * Tiny SharedPreferences wrapper for harmless UI preferences only.
+ * Thin SharedPreferences adapter over [PrefsData], which holds all of the logic (and the unit
+ * tests). This class only moves values between the platform store and that model.
  *
- * Never stored here: input text, output text, encryption passwords, cipher keys.
- * The [saveParams] helper refuses to write sensitive parameters.
+ * Stored: appearance, switches, last tool, favourites (ordered), recents, non-secret parameters.
+ * Never stored: input text, output text, passwords, keys, decrypted data.
  */
 class AppPreferences(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    var theme: AppTheme
-        get() = AppTheme.fromId(prefs.getString(KEY_THEME, AppTheme.SYSTEM.id) ?: AppTheme.SYSTEM.id)
-        set(value) = prefs.edit().putString(KEY_THEME, value.id).apply()
-
-    var accent: AccentOption
-        get() = AccentOption.fromId(prefs.getString(KEY_ACCENT, AccentOption.TEAL.id))
-        set(value) = prefs.edit().putString(KEY_ACCENT, value.id).apply()
-
-    var autoProcess: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_PROCESS, true)
-        set(value) = prefs.edit().putBoolean(KEY_AUTO_PROCESS, value).apply()
-
-    var copyConfirmation: Boolean
-        get() = prefs.getBoolean(KEY_COPY_CONFIRMATION, true)
-        set(value) = prefs.edit().putBoolean(KEY_COPY_CONFIRMATION, value).apply()
-
-    var lastTool: String?
-        get() = prefs.getString(KEY_LAST_TOOL, null)
-        set(value) = prefs.edit().putString(KEY_LAST_TOOL, value).apply()
-
-    var favorites: Set<String>
-        get() = prefs.getStringSet(KEY_FAVORITES, emptySet()) ?: emptySet()
-        set(value) = prefs.edit().putStringSet(KEY_FAVORITES, value).apply()
-
-    var recents: List<String>
-        get() = (prefs.getString(KEY_RECENTS, "") ?: "").split("|").filter { it.isNotBlank() }
-        set(value) = prefs.edit().putString(KEY_RECENTS, value.take(RECENT_LIMIT).joinToString("|")).apply()
-
-    fun paramsFor(toolId: String): Map<String, String> {
-        val raw = prefs.getString("$KEY_PARAMS_PREFIX$toolId", null) ?: return emptyMap()
-        return try {
-            val obj = JSONObject(raw)
-            obj.keys().asSequence().associateWith { obj.getString(it) }
-        } catch (e: Exception) {
-            emptyMap()
+    /** The whole store as a plain map of strings, so [PrefsData] can work on it. */
+    private fun read(): PrefsData {
+        val entries = mutableMapOf<String, String>()
+        prefs.all.forEach { (key, value) ->
+            when (value) {
+                // The legacy favourites key held a StringSet; keep it readable for the migration.
+                is Set<*> -> entries[key] = value.filterIsInstance<String>().joinToString("|")
+                is String -> entries[key] = value
+                is Boolean -> entries[key] = value.toString()
+                is Int -> entries[key] = value.toString()
+                is Long -> entries[key] = value.toString()
+                else -> Unit
+            }
         }
+        return PrefsData(entries)
     }
 
-    /** Stores non-secret parameters only (never keys or passwords). */
-    fun saveParams(toolId: String, params: Map<String, String>) {
-        val obj = JSONObject()
-        params.forEach { (key, value) -> obj.put(key, value) }
-        prefs.edit().putString("$KEY_PARAMS_PREFIX$toolId", obj.toString()).apply()
-    }
-
-    /** Clears remembered parameters, favourites and recents. Keeps the appearance settings. */
-    fun clearTemporaryData() {
-        val keysToRemove = prefs.all.keys.filter { it.startsWith(KEY_PARAMS_PREFIX) }
+    private fun write(data: PrefsData) {
         val editor = prefs.edit()
-        keysToRemove.forEach { editor.remove(it) }
-        editor.remove(KEY_FAVORITES).remove(KEY_RECENTS)
+        editor.clear()
+        data.entries.forEach { (key, value) -> editor.putString(key, value) }
         editor.apply()
     }
 
+    private fun update(block: (PrefsData) -> PrefsData) = write(block(read()))
+
+    private val registryOrder: List<String> get() = ToolRegistry.all.map { it.meta.id }
+
+    // ------------------------------------------------------------------ appearance + switches
+
+    var theme: AppTheme
+        get() = AppTheme.fromId(read().string(PrefsKeys.THEME) ?: AppTheme.SYSTEM.id)
+        set(value) = update { it.with(PrefsKeys.THEME, value.id) }
+
+    var accent: AccentOption
+        get() = AccentOption.fromId(read().string(PrefsKeys.ACCENT) ?: AccentOption.TEAL.id)
+        set(value) = update { it.with(PrefsKeys.ACCENT, value.id) }
+
+    var autoProcess: Boolean
+        get() = read().bool(PrefsKeys.AUTO_PROCESS, true)
+        set(value) = update { it.with(PrefsKeys.AUTO_PROCESS, value.toString()) }
+
+    var copyConfirmation: Boolean
+        get() = read().bool(PrefsKeys.COPY_CONFIRMATION, true)
+        set(value) = update { it.with(PrefsKeys.COPY_CONFIRMATION, value.toString()) }
+
+    var lastTool: String?
+        get() = read().string(PrefsKeys.LAST_TOOL)
+        set(value) = update { it.with(PrefsKeys.LAST_TOOL, value) }
+
+    // ------------------------------------------------------------------ favourites (ordered)
+
+    fun favorites(): List<String> = read().favorites(registryOrder)
+
+    fun setFavorites(ids: List<String>) = update { it.withFavorites(ids) }
+
+    /** Adds or removes a favourite; a new favourite is appended at the end of the order. */
+    fun toggleFavorite(id: String): List<String> {
+        val data = read()
+        val next = data.toggleFavorite(id, registryOrder)
+        write(next)
+        return next.favorites(registryOrder)
+    }
+
+    /** Moves a favourite from one position to another (drag and drop) and stores the new order. */
+    fun moveFavorite(from: Int, to: Int): List<String> {
+        val data = read()
+        val next = data.moveFavorite(from, to, registryOrder)
+        write(next)
+        return next.favorites(registryOrder)
+    }
+
+    // ------------------------------------------------------------------ recents
+
+    fun recents(): List<String> = read().recents()
+
+    fun rememberRecent(id: String): List<String> {
+        val data = read()
+        val next = data.withRecent(id)
+        write(next)
+        return next.recents()
+    }
+
+    // ------------------------------------------------------------------ tool parameters
+
+    fun paramsFor(toolId: String): Map<String, String> = read().paramsFor(toolId)
+
+    /** Stores non-secret parameters only; the caller filters out sensitive keys. */
+    fun saveParams(toolId: String, params: Map<String, String>) = update { it.withParams(toolId, params) }
+
+    // ------------------------------------------------------------------ temporary data
+
+    /** How much disposable data is stored right now, as a human-readable size. */
+    fun temporaryDataSize(): String = formatDataSize(read().temporaryBytes())
+
+    fun temporaryDataBytes(): Long = read().temporaryBytes()
+
+    /**
+     * Removes the remembered tool parameters and the recent-tool list.
+     *
+     * Favourites are **not** touched by this - they are the user's own curated list, and they can
+     * only be removed by tapping their star. Appearance settings and the last tool are kept too.
+     */
+    fun clearTemporaryData() = update { it.clearTemporary() }
+
     companion object {
         private const val PREFS_NAME = "texthub_preferences"
-        private const val KEY_THEME = "theme"
-        private const val KEY_ACCENT = "accent"
-        private const val KEY_AUTO_PROCESS = "auto_process"
-        private const val KEY_COPY_CONFIRMATION = "copy_confirmation"
-        private const val KEY_LAST_TOOL = "last_tool"
-        private const val KEY_FAVORITES = "favorites"
-        private const val KEY_RECENTS = "recents"
-        private const val KEY_PARAMS_PREFIX = "params_"
-        private const val RECENT_LIMIT = 6
     }
 }

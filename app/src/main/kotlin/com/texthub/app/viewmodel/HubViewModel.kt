@@ -11,7 +11,9 @@ import com.texthub.core.TextProcessor
 import com.texthub.core.ToolRegistry
 import com.texthub.core.defaultParams
 import com.texthub.core.model.Direction
+import com.texthub.core.model.ParamIssue
 import com.texthub.core.model.ParamSpec
+import com.texthub.core.model.validateParams
 import com.texthub.core.model.TextStats
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.model.computeStats
@@ -32,8 +34,13 @@ data class HubUiState(
     val output: String = "",
     val error: String? = null,
     val params: Map<String, String> = emptyMap(),
-    val favorites: Set<String> = emptySet(),
+    /** Favourites in the user's own order (drag and drop reorders this list). */
+    val favorites: List<String> = emptyList(),
     val recents: List<String> = emptyList(),
+    /** Human-readable size of the disposable data the app is holding. */
+    val temporaryDataSize: String = "0 B",
+    /** Parameter problems, so the UI can mark the offending field instead of showing a banner. */
+    val paramIssues: List<ParamIssue> = emptyList(),
     val autoProcess: Boolean = true,
     val copyConfirmation: Boolean = true,
     val theme: AppTheme = AppTheme.SYSTEM,
@@ -45,15 +52,49 @@ data class HubUiState(
     val meta: ToolMeta get() = ToolRegistry.metaOf(toolId)
     val hasOutput: Boolean get() = output.isNotEmpty() || error != null
 
-    /** Swapping is only offered when there is a result to move into the input. */
-    val canSwap: Boolean get() = output.isNotEmpty() && error == null
+    /** Swapping is offered only when the tool has a reverse direction and there is a result. */
+    val canSwap: Boolean get() = meta.supportsSwap && output.isNotEmpty() && error == null
 
-    /** Label for the swap button: it always names the mode the text is about to be processed in. */
-    val swapLabel: String
-        get() {
-            val target = if (direction == Direction.ENCODE) meta.decodeLabel else meta.encodeLabel
-            return "Swap & " + target
+    /** The direction switch is hidden for symmetric and one-way tools: they have nothing to switch. */
+    val showDirection: Boolean get() = meta.hasDirectionChoice
+
+    val showSwap: Boolean get() = meta.supportsSwap
+
+    /**
+     * The mode the swap button would flip to, or null when the tool has no direction to flip (a
+     * symmetric cipher such as ROT13). The text itself is built in the UI from string resources, so
+     * every label stays translatable.
+     */
+    val swapTarget: String?
+        get() = if (!meta.hasDirectionChoice) {
+            null
+        } else {
+            if (direction == Direction.ENCODE) meta.decodeLabel else meta.encodeLabel
         }
+
+    /**
+     * The label of the single action button, taken from the tool itself: the operation it performs
+     * in the current direction. No tool shows a generic "Process" button, and a tool with one
+     * operation never shows two different labels for it.
+     */
+    val actionLabel: String
+        get() = if (meta.hasDirectionChoice) {
+            if (direction == Direction.ENCODE) meta.encodeLabel else meta.decodeLabel
+        } else {
+            meta.encodeLabel
+        }
+
+    /** True when the tool has parameters the user can adjust. */
+    val hasParams: Boolean get() = meta.params.isNotEmpty()
+
+    /** True when there are advanced settings worth collapsing. */
+    val hasAdvancedParams: Boolean get() = meta.advancedParams.isNotEmpty()
+
+    /** True when every parameter value is usable. */
+    val paramsValid: Boolean get() = paramIssues.isEmpty()
+
+    /** The inline message for one parameter, or null when it is fine. */
+    fun issueFor(key: String): String? = paramIssues.firstOrNull { it.key == key }?.message
 }
 
 /**
@@ -83,14 +124,17 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = AppPreferences(application)
 
+    private var statsJob: Job? = null
+
     private val _uiState = MutableStateFlow(
         HubUiState(
             theme = prefs.theme,
             accent = prefs.accent,
             autoProcess = prefs.autoProcess,
             copyConfirmation = prefs.copyConfirmation,
-            favorites = prefs.favorites,
-            recents = prefs.recents,
+            favorites = prefs.favorites(),
+            recents = prefs.recents(),
+            temporaryDataSize = prefs.temporaryDataSize(),
         )
     )
     val uiState: StateFlow<HubUiState> = _uiState.asStateFlow()
@@ -108,9 +152,15 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     fun selectTool(toolId: String, rememberRecent: Boolean = true) {
         val processor = ToolRegistry.get(toolId)
         val defaults = processor.defaultParams()
-        val saved = prefs.paramsFor(toolId).filterKeys { key ->
-            // Never restore a sensitive value from disk.
-            processor.meta.params.any { it.key == key && !it.sensitive }
+        // Restore what was remembered, minus anything that no longer fits this tool: a sensitive
+        // value is never restored, and a value that the current tool would reject (a choice that was
+        // removed, a number now out of range) is dropped instead of being handed to the user as a
+        // broken setting. The defaults fill in whatever is left.
+        val stored = prefs.paramsFor(toolId)
+        val saved = stored.filter { (key, value) ->
+            val spec = processor.meta.params.firstOrNull { it.key == key }
+            spec != null && !spec.sensitive && value.isNotEmpty() &&
+                processor.meta.validateParams(mapOf(key to value)).none { it.key == key }
         }
         val merged = defaults + saved
         _uiState.update {
@@ -121,13 +171,12 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 error = null,
                 outputStats = TextStats(0, 0, 0),
                 direction = Direction.ENCODE,
-            )
+            ).withValidatedParams()
         }
         prefs.lastTool = toolId
         if (rememberRecent) {
-            val updated = (listOf(toolId) + _uiState.value.recents).distinct().take(6)
+            val updated = prefs.rememberRecent(toolId)
             _uiState.update { it.copy(recents = updated) }
-            prefs.recents = updated
         }
         process(immediate = true)
     }
@@ -142,24 +191,53 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleFavorite(toolId: String) {
-        val next = _uiState.value.favorites.toMutableSet()
-        if (!next.add(toolId)) next.remove(toolId)
+        val next = prefs.toggleFavorite(toolId)
         _uiState.update { it.copy(favorites = next) }
-        prefs.favorites = next
+    }
+
+    /** Drag-and-drop reorder of the favourites list; the new order is stored immediately. */
+    fun moveFavorite(from: Int, to: Int) {
+        if (from == to) return
+        val next = prefs.moveFavorite(from, to)
+        _uiState.update { it.copy(favorites = next) }
     }
 
     // ------------------------------------------------------------------- text + params
 
     fun setInput(text: String) {
-        _uiState.update { it.copy(input = text, inputStats = computeStats(text)) }
+        if (text.length <= STATS_ON_MAIN_THREAD_LIMIT) {
+            // Short text: counting is free, so the handy character/word/line line stays instant.
+            _uiState.update { it.copy(input = text, inputStats = computeStats(text)) }
+        } else {
+            // Large paste: count off the main thread, so typing never waits for a scan of the text.
+            _uiState.update { it.copy(input = text) }
+            statsJob?.cancel()
+            statsJob = viewModelScope.launch {
+                val stats = withContext(Dispatchers.Default) { computeStats(text) }
+                _uiState.update { it.copy(inputStats = stats) }
+            }
+        }
         if (_uiState.value.autoProcess) process()
     }
 
     fun setParam(key: String, value: String) {
-        _uiState.update { it.copy(params = it.params + (key to value)) }
+        _uiState.update { it.copy(params = it.params + (key to value)).withValidatedParams() }
         persistParams()
         if (_uiState.value.autoProcess) process()
     }
+
+    /** Restores every parameter of the current tool to its default value. */
+    fun resetParams() {
+        val processor = ToolRegistry.get(_uiState.value.toolId)
+        _uiState.update { it.copy(params = processor.defaultParams()).withValidatedParams() }
+        // The stored copy is dropped too, so a reset is not undone by the next launch.
+        prefs.saveParams(_uiState.value.toolId, emptyMap())
+        process(immediate = true)
+    }
+
+    /** Recomputes the inline parameter warnings for the current values. */
+    private fun HubUiState.withValidatedParams(): HubUiState =
+        copy(paramIssues = meta.validateParams(params))
 
     private fun persistParams() {
         val state = _uiState.value
@@ -204,23 +282,33 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         // Tools such as the RSA key generator work without input text, so an empty input box is
         // only a reason to stop for the tools that actually need text.
         if (input.isEmpty() && !processor.meta.inputOptional) {
-            _uiState.update { it.copy(output = "", error = null, outputStats = TextStats(0, 0, 0), processing = false) }
+            _uiState.update {
+                it.copy(
+                    output = "",
+                    error = null,
+                    inputStats = TextStats(0, 0, 0),
+                    outputStats = TextStats(0, 0, 0),
+                    processing = false,
+                )
+            }
             return
         }
 
         val heavy = input.length > LARGE_INPUT_THRESHOLD
         if (heavy) _uiState.update { it.copy(processing = true) }
 
-        // Never touch the main thread with real work.
+        // Never touch the main thread with real work - including the word/line count of a large
+        // result, which used to be measured on the main thread after the work came back.
         val outcome = withContext(Dispatchers.Default) {
-            ProcessingEngine.run(processor, input, params, direction)
+            val result = ProcessingEngine.run(processor, input, params, direction)
+            result to computeStats(result.output)
         }
 
         _uiState.update {
             it.copy(
-                output = outcome.output,
-                error = outcome.error,
-                outputStats = computeStats(outcome.output),
+                output = outcome.first.output,
+                error = outcome.first.error,
+                outputStats = outcome.second,
                 processing = false,
             )
         }
@@ -249,14 +337,21 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         prefs.copyConfirmation = enabled
     }
 
+    /**
+     * Clears disposable data only: remembered tool parameters and the recent-tool list.
+     *
+     * Favourites are deliberately kept - they are the user's own curated list and can only be
+     * removed by tapping their star - and so are the appearance settings and the selected tool.
+     * The displayed size is refreshed in the same step, so the number can never be stale.
+     */
     fun clearTemporaryData() {
         prefs.clearTemporaryData()
         _uiState.update {
             it.copy(
-                favorites = emptySet(),
                 recents = emptyList(),
                 params = ToolRegistry.get(it.toolId).defaultParams(),
-            )
+                temporaryDataSize = prefs.temporaryDataSize(),
+            ).withValidatedParams()
         }
         process(immediate = true)
     }
@@ -270,5 +365,8 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val DEBOUNCE_MS = 140L
         private const val LARGE_INPUT_THRESHOLD = 60_000
+
+        /** Beyond this many characters the statistics line is counted off the main thread. */
+        private const val STATS_ON_MAIN_THREAD_LIMIT = 20_000
     }
 }

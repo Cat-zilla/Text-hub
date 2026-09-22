@@ -15,8 +15,8 @@ android {
         applicationId = "com.texthub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.4.2"
+        versionCode = 8
+        versionName = "1.5.1"
         resourceConfigurations += setOf("en")
     }
 

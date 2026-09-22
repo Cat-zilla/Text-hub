@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Compose renders the whole UI; this theme only removes the system action bar and
          sets the window background so the first frame already matches the app. -->
     <style name="Theme.TextHub" parent="android:Theme.Material.NoActionBar">
@@ -7,7 +7,9 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowTranslucentStatus">false</item>
+        <!-- API 29 added the navigation-bar contrast scrim, which would paint a lighter band
+             under an AMOLED-dark screen. Devices below API 29 ignore the attribute. -->
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="29">false</item>
     </style>
 </resources>

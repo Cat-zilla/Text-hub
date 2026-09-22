@@ -13,12 +13,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,6 +38,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -69,6 +76,9 @@ fun SettingsScreen(
     onClearTemporaryData: () -> Unit,
     versionName: String,
 ) {
+    // The confirmation is a dialog, because "clear" used to happen silently and take the
+    // favourites with it. Now the user sees exactly what goes and what stays before it does.
+    var confirmingClear by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -174,6 +184,66 @@ fun SettingsScreen(
                 )
             }
 
+            // ---------------------------------------------------------------- storage
+            // Its own card, separate from the privacy explanation: the two used to share one box,
+            // which made "Clear temporary data" look like part of the privacy text.
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.Storage,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_storage),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = Spacing.sm),
+                    )
+                }
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    text = stringResource(R.string.settings_storage_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                )
+                HubDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_temporary_data),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        // Live size: it is recomputed whenever the store changes and right after a
+                        // clear, so the number on screen is never stale.
+                        Text(
+                            text = stringResource(R.string.settings_temporary_data_size, state.temporaryDataSize),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    TextAction(
+                        text = stringResource(R.string.action_clear),
+                        onClick = { confirmingClear = true },
+                    )
+                }
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    text = stringResource(R.string.settings_temporary_data_body),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                )
+                Text(
+                    text = stringResource(R.string.settings_temporary_data_kept),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+
             // ---------------------------------------------------------------- privacy
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -201,30 +271,6 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = mutedTextColor,
                 )
-                Spacer(Modifier.height(Spacing.sm))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.DeleteSweep,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm)) {
-                        Text(
-                            text = stringResource(R.string.settings_clear_data),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_clear_data_sub),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = mutedTextColor,
-                        )
-                    }
-                    TextAction(text = stringResource(R.string.action_clear), onClick = onClearTemporaryData)
-                }
             }
 
             // ----------------------------------------------------------------- about
@@ -243,6 +289,52 @@ fun SettingsScreen(
             }
           }
         }
+    }
+
+    if (confirmingClear) {
+        AlertDialog(
+            onDismissRequest = { confirmingClear = false },
+            title = { Text(stringResource(R.string.clear_data_title)) },
+            text = {
+                Column {
+                    Text(
+                        text = stringResource(R.string.clear_data_removed),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.clear_data_removed_list),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = mutedTextColor,
+                        modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md),
+                    )
+                    Text(
+                        text = stringResource(R.string.clear_data_kept),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.clear_data_kept_list),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = mutedTextColor,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingClear = false
+                        onClearTemporaryData()
+                    },
+                ) {
+                    Text(stringResource(R.string.clear_data_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingClear = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 }
 

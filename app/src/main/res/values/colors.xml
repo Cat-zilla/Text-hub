@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="launch_background">#FF000000</color>
-    <!-- Adaptive icon (API 26+) -->
-    <color name="ic_launcher_background">#FF0B0F14</color>
 </resources>

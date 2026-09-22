@@ -273,3 +273,13 @@ All of the values above were produced by the shipped implementation and are repr
   signature and says so in its output.
 * That formatting JSON, testing a regex, diffing two versions or counting words changes the
   meaning of your data — those tools report and reformat only.
+
+---
+
+## Common and advanced settings (1.5.0)
+
+Every tool shows the settings its everyday use needs - a password, a key size, a format - and
+collects the rest under *Additional encryption settings* / *Additional settings*, collapsed by
+default. The section is the same everywhere, so a setting learned in one tool is in the same place
+in the next one. Advanced parameters always carry a one-line explanation, impossible combinations
+are refused inline while typing, and any tool with more than one setting has a *Reset* action.

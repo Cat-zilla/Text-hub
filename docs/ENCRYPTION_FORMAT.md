@@ -255,3 +255,40 @@ bytes k+12..n  ciphertext     AES-GCM ciphertext followed by the 16-byte tag
 * No hard-coded or embedded keys.
 * No recovery mechanism for lost passwords.
 * No claim that the scheme is unbreakable.
+
+---
+
+## 12. Parameter discipline (1.5.0)
+
+A parameter is either recorded in the payload, or it is part of the input the user has to supply,
+and there is no third case:
+
+| Kind of setting | Examples | What happens on decryption |
+| --- | --- | --- |
+| Recorded in the payload | key size (`kdfId`), envelope version, RSA algorithm id, key length for a pasted key | Read from the payload and enforced; a conflicting setting is refused with the size the message needs |
+| Must be supplied | password, RSA/PEM private key, AAD (an authentication input, never stored) | Missing or wrong values fail authentication; AAD is never auto-filled |
+| Defines the transform | Base58 alphabet, Base85 variant, Bacon's variant, Scytale diameter, Baudot alphabet, A1Z26 separators, case/leet/regex mode | Cannot be recovered from the data by construction. The tool says so in its info sheet, and a result that is provably wrong for text (invalid UTF-8, out-of-range units) is refused |
+
+`ParamDisciplineAuditTest` enforces this for all 73 tools: encoding with the defaults and decoding
+with one setting changed must return the original text or fail with a friendly sentence - a
+confidently wrong answer is a test failure. Tools where a changed setting legitimately changes the
+answer are listed explicitly in the test, with the reason, next to the warning the user sees.
+
+## 13. Compatibility with other tools (1.5.0)
+
+| Source | Accepted by | Notes |
+| --- | --- | --- |
+| `openssl enc -aes-256-cbc` (OpenSSL 3 default: SHA-256, 10 000 iterations) | AES-CBC + HMAC, Format = OpenSSL enc | 16-byte `Salted__` header is parsed; the password is the only secret |
+| `openssl enc -md md5` (OpenSSL 1.x behaviour) | same, KDF = legacy | Legacy derivation is a single `EVP_BytesToKey` pass - OpenSSL 1.x had no iteration count |
+| `openssl enc -pbkdf2 -iter N` | same, KDF = PBKDF2 | The iteration count is read from the file and reported; it is not a password-strength statement |
+| `openssl enc -base64` wrapped output | same | Whitespace inside the Base64 is ignored |
+| JWE compact, `alg=dir` | AES-GCM with your own key | The pasted key *is* the content key; the protected header supplies the IV, tag and encoding |
+| JWE compact, any `enc` | same | `A128GCM`, `A192GCM`, `A256GCM`, `A128CBC-HS256`, `A192CBC-HS384`, `A256CBC-HS512` |
+| JWE compact, `alg=RSA-OAEP` / `RSA-OAEP-256` | RSA-OAEP + AES-GCM | The wrapped content key is unwrapped with the pasted PEM private key, then the same content decryption runs |
+
+Not claimed: JWE key-management algorithms other than `dir`, `RSA-OAEP` and `RSA-OAEP-256`
+(`A128KW`, `ECDH-ES`, `PBES2`, …), content-encryption algorithms outside the six above, and OpenSSL
+files whose cipher is not AES-256-CBC. Those are refused with the part that is unsupported named -
+never with "this was not encrypted by Text Hub". Text Hub can also *write* compact JWE tokens with
+`alg=dir`, so a token produced here opens in any standard JWE library, and the test suite proves it
+with tokens produced outside the app.

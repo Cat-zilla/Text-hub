@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Keyboard
@@ -34,7 +36,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -50,6 +55,7 @@ import com.texthub.app.R
 import com.texthub.app.ui.components.ClassificationChip
 import com.texthub.app.ui.components.ChoiceDropdown
 import com.texthub.app.ui.components.ErrorBanner
+import com.texthub.app.ui.components.HubDivider
 import com.texthub.app.ui.components.HubTextField
 import com.texthub.app.ui.components.NumberStepper
 import com.texthub.app.ui.components.PrimaryAction
@@ -66,6 +72,7 @@ import com.texthub.app.viewmodel.HubUiState
 import com.texthub.core.model.Direction
 import com.texthub.core.model.ParamKind
 import com.texthub.core.model.ParamSpec
+import com.texthub.core.model.ToolCategory
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -85,6 +92,7 @@ fun MainScreen(
     onPaste: () -> Unit,
     onClearInput: () -> Unit,
     onClearOutput: () -> Unit,
+    onResetParams: () -> Unit,
 ) {
     val meta = state.meta
     val keyboard = LocalSoftwareKeyboardController.current
@@ -174,14 +182,33 @@ fun MainScreen(
                 }
 
                 // ------------------------------------------------------- direction switch
+                // Only shown when the tool really has two different directions. A symmetric tool
+                // (ROT13, Atbash) computes the same thing both ways and a one-way tool (a digest, a
+                // comparison, key generation) has no reverse at all, so neither gets a switch that
+                // would do nothing. In their place the single operation is named.
                 Column {
-                    SegmentedControl(
-                        options = listOf(meta.encodeLabel, meta.decodeLabel),
-                        selectedIndex = if (state.direction == Direction.ENCODE) 0 else 1,
-                        onSelect = { index ->
-                            onDirectionSelected(if (index == 0) Direction.ENCODE else Direction.DECODE)
-                        },
-                    )
+                    if (state.showDirection) {
+                        SegmentedControl(
+                            options = listOf(meta.encodeLabel, meta.decodeLabel),
+                            selectedIndex = if (state.direction == Direction.ENCODE) 0 else 1,
+                            onSelect = { index ->
+                                onDirectionSelected(if (index == 0) Direction.ENCODE else Direction.DECODE)
+                            },
+                        )
+                    } else {
+                        Text(
+                            text = if (meta.oneWay) {
+                                stringResource(R.string.msg_single_operation, meta.encodeLabel)
+                            } else {
+                                stringResource(R.string.msg_symmetric_operation, meta.encodeLabel)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = mutedTextColor,
+                            modifier = Modifier.padding(start = Spacing.xs),
+                        )
+                    }
+                    // A symmetric tool says once, next to its single operation name, that both
+                    // directions are the same. (It has no switch, so this is not a hint about one.)
                     if (meta.symmetric) {
                         Text(
                             text = stringResource(R.string.msg_symmetric_hint),
@@ -193,24 +220,83 @@ fun MainScreen(
                 }
 
                 // ------------------------------------------------------------ parameters
+                // Primary settings stay in view; the advanced ones (external formats, digests,
+                // explicit IVs) live under one collapsible heading so the common path stays short.
+                // Nothing sensitive is ever written to disk, and every setting that changes the
+                // result is a parameter of this tool rather than a separate tool.
                 if (meta.params.isNotEmpty()) {
+                    var advancedExpanded by remember(meta.id) { mutableStateOf(false) }
                     SectionCard {
-                        SectionTitle(text = stringResource(R.string.label_parameters))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle(
+                                text = stringResource(R.string.label_parameters),
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (meta.canResetParams) {
+                                TextAction(
+                                    text = stringResource(R.string.action_reset),
+                                    onClick = onResetParams,
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(Spacing.md))
-                        meta.params.forEachIndexed { index, spec ->
+                        meta.primaryParams.forEachIndexed { index, spec ->
                             if (index > 0) Spacer(Modifier.height(Spacing.md))
-                            ParameterEditor(
+                            ParameterField(
                                 spec = spec,
                                 value = state.params[spec.key] ?: spec.defaultValue,
+                                issue = state.issueFor(spec.key),
                                 onValueChange = { onParamChange(spec.key, it) },
                             )
-                            spec.helper?.let {
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = mutedTextColor,
-                                    modifier = Modifier.padding(start = Spacing.xs, top = 4.dp),
+                        }
+                        if (meta.advancedParams.isNotEmpty()) {
+                            Spacer(Modifier.height(Spacing.md))
+                            HubDivider()
+                            Spacer(Modifier.height(Spacing.sm))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { advancedExpanded = !advancedExpanded },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = if (advancedExpanded) {
+                                        Icons.Outlined.ExpandLess
+                                    } else {
+                                        Icons.Outlined.ExpandMore
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
                                 )
+                                Column(modifier = Modifier.weight(1f).padding(start = Spacing.sm)) {
+                                    Text(
+                                        text = stringResource(
+                                            if (meta.category == ToolCategory.SECURE) {
+                                                R.string.label_advanced_encryption
+                                            } else {
+                                                R.string.label_advanced_settings
+                                            }
+                                        ),
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.label_advanced_sub),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = mutedTextColor,
+                                    )
+                                }
+                            }
+                            if (advancedExpanded) {
+                                meta.advancedParams.forEach { spec ->
+                                    Spacer(Modifier.height(Spacing.md))
+                                    ParameterField(
+                                        spec = spec,
+                                        value = state.params[spec.key] ?: spec.defaultValue,
+                                        issue = state.issueFor(spec.key),
+                                        onValueChange = { onParamChange(spec.key, it) },
+                                    )
+                                }
                             }
                         }
                     }
@@ -257,19 +343,16 @@ fun MainScreen(
                         maxLines = 8,
                     )
                     Spacer(Modifier.height(Spacing.sm))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatsLine(stats = state.inputStats, modifier = Modifier.weight(1f))
-                        TextAction(
-                            text = stringResource(R.string.action_type_here),
-                            onClick = { focusInput() },
-                        )
-                    }
+                    // The field is directly above, so a "Type here" button only duplicated the tap.
+                    StatsLine(stats = state.inputStats)
                 }
 
                 // --------------------------------------------------------- process action
                 if (!state.autoProcess) {
                     PrimaryAction(
-                        text = stringResource(R.string.action_process),
+                        // The tool's own verb: "Encrypt", "Decode", "Hash", "Compare" - never a
+                        // generic "Process" that tells the user nothing about what will happen.
+                        text = state.actionLabel,
                         onClick = {
                             keyboard?.hide()
                             focusManager.clearFocus()
@@ -304,11 +387,8 @@ fun MainScreen(
                             onClick = onCopy,
                             enabled = state.output.isNotEmpty(),
                         )
-                        TextAction(
-                            text = stringResource(R.string.action_clear),
-                            onClick = onClearOutput,
-                            enabled = state.output.isNotEmpty(),
-                        )
+                        // Clear lives once, as the X in the card footer below, next to Share: two
+                        // identical buttons inside one card was one too many.
                     }
                     if (state.processing) {
                         LinearProgressIndicator(
@@ -335,25 +415,31 @@ fun MainScreen(
                     )
                     Spacer(Modifier.height(Spacing.md))
 
-                    // Swap: moves the result into the input, flips the mode (Encode <-> Decode)
-                    // and immediately processes again, so a round trip is one tap.
-                    SecondaryAction(
-                        text = state.swapLabel,
-                        onClick = {
-                            keyboard?.hide()
-                            focusManager.clearFocus()
-                            onSwap()
-                        },
-                        enabled = state.canSwap,
-                        icon = {
-                            Icon(
-                                Icons.Outlined.SwapVert,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                    )
-                    Spacer(Modifier.height(Spacing.sm))
+                    // Swap: moves the result into the input and, when the tool has a reverse
+                    // direction, flips the mode and processes again - one tap for a round trip.
+                    // Tools that produce a final answer (a digest, a measurement, a comparison)
+                    // do not offer it at all.
+                    if (state.showSwap) {
+                        SecondaryAction(
+                            text = state.swapTarget?.let { target ->
+                                stringResource(R.string.action_swap_into, target)
+                            } ?: stringResource(R.string.action_use_as_input),
+                            onClick = {
+                                keyboard?.hide()
+                                focusManager.clearFocus()
+                                onSwap()
+                            },
+                            enabled = state.canSwap,
+                            icon = {
+                                Icon(
+                                    Icons.Outlined.SwapVert,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                        )
+                        Spacer(Modifier.height(Spacing.sm))
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatsLine(stats = state.outputStats, modifier = Modifier.weight(1f))
                         IconButton(
@@ -403,6 +489,37 @@ fun MainScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * One parameter: the editor itself, then the inline problem (if any) and then the helper text.
+ * A problem is shown where it belongs - next to the field it is about - instead of only in a
+ * generic banner at the bottom of the screen.
+ */
+@Composable
+private fun ParameterField(
+    spec: ParamSpec,
+    value: String,
+    issue: String?,
+    onValueChange: (String) -> Unit,
+) {
+    ParameterEditor(spec = spec, value = value, onValueChange = onValueChange)
+    if (issue != null) {
+        Text(
+            text = issue,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(start = Spacing.xs, top = 4.dp),
+        )
+    }
+    spec.helper?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.labelSmall,
+            color = mutedTextColor,
+            modifier = Modifier.padding(start = Spacing.xs, top = 4.dp),
+        )
     }
 }
 
