@@ -268,23 +268,67 @@ object RsaKeyGen {
 
     val SIZES = intArrayOf(2048, 3072, 4096)
 
-    /** Returns `public PEM`, a blank line, `private PEM`, then a short, non-secret summary. */
-    fun generate(bits: Int = 2048): String {
+    /**
+     * The pieces of one generation, so the app can present the public key, the private key and the
+     * key information in their own sections instead of one block of text. Everything here is meant
+     * for the screen; the private half is as sensitive as a password and is never persisted.
+     */
+    data class Generated(
+        /** The public key, X.509 `-----BEGIN PUBLIC KEY-----`. Safe to share. */
+        val publicPem: String,
+        /** The private key, PKCS#8 `-----BEGIN PRIVATE KEY-----`. Must be kept secret. */
+        val privatePem: String,
+        /** The key size in bits, as generated (what the key information section shows). */
+        val bits: Int,
+        /** Colon-separated SHA-256 fingerprint of the DER-encoded **public** key. */
+        val fingerprint: String,
+    )
+
+    fun generatePair(bits: Int = 2048): Generated {
         if (bits !in SIZES) throw Errors.rsaSize()
         val pair: KeyPair = try {
             KeyPairGenerator.getInstance("RSA").apply { initialize(bits, SecureRandom()) }.generateKeyPair()
         } catch (e: GeneralSecurityException) {
             throw Errors.rsaKey()
         }
-        val publicPem = RsaPem.toPem(RsaPem.PUBLIC_BEGIN, RsaPem.PUBLIC_END, pair.public.encoded)
-        val privatePem = RsaPem.toPem(RsaPem.PRIVATE_BEGIN, RsaPem.PRIVATE_END, pair.private.encoded)
-        return buildString {
-            append(publicPem).append("\n\n").append(privatePem).append("\n\n")
-            append("$bits-bit RSA key pair generated on this device.\n")
-            append("Public key fingerprint (SHA-256): ").append(fingerprint(pair.public)).append('\n')
-            append("Keep the private key secret: anyone who has it can read every message encrypted to this key.\n")
-            append("Encrypt with the PUBLIC key, decrypt with the PRIVATE key.\n")
-        }
+        return Generated(
+            publicPem = RsaPem.toPem(RsaPem.PUBLIC_BEGIN, RsaPem.PUBLIC_END, pair.public.encoded),
+            privatePem = RsaPem.toPem(RsaPem.PRIVATE_BEGIN, RsaPem.PRIVATE_END, pair.private.encoded),
+            bits = bits,
+            fingerprint = fingerprint(pair.public),
+        )
+    }
+
+    /** Returns `public PEM`, a blank line, `private PEM`, then a short, non-secret summary. */
+    fun generate(bits: Int = 2048): String = format(generatePair(bits))
+
+    /** The exact text format of the generator's output (see [parse] for its inverse). */
+    fun format(result: Generated): String = buildString {
+        append(result.publicPem).append("\n\n").append(result.privatePem).append("\n\n")
+        append("${result.bits}-bit RSA key pair generated on this device.\n")
+        append("Public key fingerprint (SHA-256): ").append(result.fingerprint).append('\n')
+        append("Keep the private key secret: anyone who has it can read every message encrypted to this key.\n")
+        append("Encrypt with the PUBLIC key, decrypt with the PRIVATE key.\n")
+    }
+
+    /**
+     * The structured halves of a generator output, for the dedicated key sections.
+     *
+     * Understands exactly the format [format] writes and nothing else: an error text, a pasted key,
+     * a payload of another tool - anything that is not a complete, well-formed generator output -
+     * returns null rather than a half-built result. The PEM bodies contain no blank lines, so the
+     * three parts separate cleanly.
+     */
+    fun parse(text: String): Generated? {
+        val parts = text.trim().split("\n\n")
+        if (parts.size != 3) return null
+        val (publicPem, privatePem, summary) = parts
+        if (!publicPem.startsWith(RsaPem.PUBLIC_BEGIN) || !publicPem.endsWith(RsaPem.PUBLIC_END)) return null
+        if (!privatePem.startsWith(RsaPem.PRIVATE_BEGIN) || !privatePem.endsWith(RsaPem.PRIVATE_END)) return null
+        val bits = Regex("(\\d+)-bit RSA key pair").find(summary)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        val fingerprint = Regex("Public key fingerprint \\(SHA-256\\): ([0-9A-F]{2}(?::[0-9A-F]{2}){31})")
+            .find(summary)?.groupValues?.get(1) ?: return null
+        return Generated(publicPem = publicPem, privatePem = privatePem, bits = bits, fingerprint = fingerprint)
     }
 
     /** Colon separated SHA-256 fingerprint of the DER-encoded public key. */

@@ -404,8 +404,13 @@ class RsaProcessor : TextProcessor {
  */
 class RsaKeyGenProcessor : TextProcessor {
 
+    companion object {
+        /** The registered tool id, shared with the UI that renders the key sections. */
+        const val TOOL_ID = "rsakeygen"
+    }
+
     override val meta = ToolMeta(
-        id = "rsakeygen",
+        id = TOOL_ID,
         name = "RSA Key Pair Generator",
         glyph = "GEN",
         category = ToolCategory.SECURE,
@@ -447,6 +452,9 @@ class RsaKeyGenProcessor : TextProcessor {
         ),
         keywords = listOf("rsa", "key pair", "generate", "pem", "public key", "private key", "keygen"),
         oneWay = true,
+        // Key material is created only when the user presses Generate: opening the tool, changing
+        // the key size or any other state change must never silently mint (or replace) a pair.
+        explicitActionOnly = true,
     )
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {

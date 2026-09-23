@@ -6,6 +6,7 @@ import com.texthub.core.model.ProcessOutcome
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolException
 import com.texthub.core.model.ToolMeta
+import java.util.concurrent.CancellationException
 import com.texthub.core.processors.A1Z26Processor
 import com.texthub.core.processors.AesCbcProcessor
 import com.texthub.core.processors.AesCtrProcessor
@@ -221,12 +222,24 @@ object ProcessingEngine {
             )
         } catch (e: ToolException) {
             ProcessOutcome(error = e.message ?: "That input could not be processed.", durationMs = 0)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            // Structured concurrency must stay intact: a cancelled job (the user kept typing and
+            // the debounced run was replaced) is not a processing failure. Swallowing it here
+            // would turn cancellation into a fake error result and break the caller's coroutine.
+            throw e
+        } catch (e: Throwable) {
             // Never surface a raw stack trace to the user, and never blame the cipher settings:
             // this branch means the processor failed for a reason it did not describe, which has
             // nothing to do with keys or parameters. (Before 1.6.1 every unexpected failure was
             // reported as "these cipher settings are not valid", which is how a decoding bug in one
             // format looked like a problem with the password the user had typed into another one.)
+            //
+            // This catches `Throwable`, not just `Exception`: the tools here are pure functions
+            // that own no locks and no shared state, so a `StackOverflowError` (the platform regex
+            // engine on some inputs, for example) or an `OutOfMemoryError` on a large paste can be
+            // reported like any other failure instead of killing the process. The 1.6.1 release
+            // caught only `Exception`, which is why a crash of that class could escape this engine
+            // on a device while every JVM unit test still passed.
             ProcessOutcome(
                 error = Errors.unexpectedFailure().message,
                 durationMs = 0,

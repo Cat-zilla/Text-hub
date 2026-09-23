@@ -9,6 +9,7 @@ import com.texthub.core.model.Direction
 import com.texthub.core.model.ProcessOutcome
 import com.texthub.core.model.operationKind
 import com.texthub.core.util.hexDigit
+import java.util.concurrent.CancellationException
 
 /**
  * The Universal Decoder: it looks at pasted data, says what it recognises **and how sure it is**,
@@ -153,8 +154,9 @@ object UniversalDecoder {
             Diagnosis.Unrecognized(
                 steps = emptyList(),
                 candidates = emptyList(),
-                note = "No supported format was recognised in this text. Pick the tool you meant " +
-                    "with the tool picker, or paste a complete payload.",
+                note = "No supported format was recognised in this text. Ordinary readable text is " +
+                    "not an error: it is simply not decoded on purpose. Try encoded, encrypted or " +
+                    "transformed text, or pick the tool you meant with the tool picker.",
             )
         } else {
             Diagnosis.Decoded(steps = steps, text = current)
@@ -216,8 +218,21 @@ object UniversalDecoder {
      *
      * The question "which key size does this authenticate with?" is asked of the format's own
      * implementation through [PayloadKeySize], so no format is special-cased here.
+     *
+     * Candidate isolation: this reads the *pasted payload* with the *typed secret* through the
+     * format's own reader, so a defect there must cost this candidate its extra setting and nothing
+     * more - the candidate still goes to the registered tool, whose own outcome (or whose refusal)
+     * is what the user sees. It must never abort the whole analysis.
      */
-    private fun resolveFromPayload(candidate: Candidate, input: String, secret: String): Candidate {
+    private fun resolveFromPayload(candidate: Candidate, input: String, secret: String): Candidate = try {
+        resolveFromPayloadChecked(candidate, input, secret)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        candidate
+    }
+
+    private fun resolveFromPayloadChecked(candidate: Candidate, input: String, secret: String): Candidate {
         if (secret.isEmpty() || candidate.secretKind != SecretKind.PASSWORD) return candidate
         val sizeKey = candidate.suggestedParams.keys.firstOrNull { it.equals("keySize", ignoreCase = true) }
             ?: ToolRegistry.metaOf(candidate.toolId).cipherParameters

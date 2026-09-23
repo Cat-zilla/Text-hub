@@ -16,6 +16,7 @@ object PrefsKeys {
     const val ACCENT = "accent"
     const val AUTO_PROCESS = "auto_process"
     const val COPY_CONFIRMATION = "copy_confirmation"
+    const val HAPTIC_FEEDBACK = "haptic_feedback"
     const val LAST_TOOL = "last_tool"
     const val RECENTS = "recents"
 
@@ -38,6 +39,7 @@ val KEPT_WHEN_CLEARING: List<String> = listOf(
     PrefsKeys.ACCENT,
     PrefsKeys.AUTO_PROCESS,
     PrefsKeys.COPY_CONFIRMATION,
+    PrefsKeys.HAPTIC_FEEDBACK,
     PrefsKeys.LAST_TOOL,
     PrefsKeys.FAVORITES_ORDER,
 )
@@ -194,6 +196,20 @@ data class PrefsData(val entries: Map<String, String> = emptyMap()) {
         entries = entries.filterKeys { key ->
             !(key.startsWith(PrefsKeys.PARAMS_PREFIX) || key == PrefsKeys.RECENTS)
         },
+    )
+
+    /**
+     * "Restore defaults": every user-configurable preference returns to its out-of-the-box value.
+     *
+     * The store keeps exactly one thing - the **favourites and their order**, because they are the
+     * user's own curated list and the documented behaviour of every reset in this app ("Clear
+     * temporary data" included) is that favourites survive. Everything else is dropped: appearance,
+     * the switches, the last tool, the recents and every remembered tool parameter. What each key
+     * then means is the caller's business (the app re-reads its defaults); nothing is deleted
+     * outside the preference store, and text, keys and passwords were never here to begin with.
+     */
+    fun restoredToDefaults(): PrefsData = copy(
+        entries = entries.filterKeys { it == PrefsKeys.FAVORITES_ORDER },
     )
 
     // ------------------------------------------------------------------ small typed accessors

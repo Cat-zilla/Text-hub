@@ -7,6 +7,7 @@ import com.texthub.core.prefs.moveFavoriteBefore
 import com.texthub.core.prefs.moveFavoriteInDisplayedOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,6 +20,58 @@ class PrefsModelTest {
     private fun data(vararg pairs: Pair<String, String>) = PrefsData(mapOf(*pairs))
 
     // ---------------------------------------------------------------- clear temporary data
+
+    // ---------------------------------------------------------------- restore defaults
+
+    @Test fun restoringDefaultsKeepsExactlyTheFavouritesAndNothingElse() {
+        val before = data(
+            PrefsKeys.FAVORITES_ORDER to "aes|base64|vigenere",
+            PrefsKeys.RECENTS to "aes|base64",
+            "${PrefsKeys.PARAMS_PREFIX}aes" to "keySize=128",
+            "${PrefsKeys.PARAMS_PREFIX}vigenere" to "alphabet=QWERTY",
+            PrefsKeys.THEME to "AMOLED",
+            PrefsKeys.ACCENT to "ROSE",
+            PrefsKeys.AUTO_PROCESS to "false",
+            PrefsKeys.COPY_CONFIRMATION to "false",
+            PrefsKeys.HAPTIC_FEEDBACK to "false",
+            PrefsKeys.LAST_TOOL to "aes",
+        )
+        val after = before.restoredToDefaults()
+
+        assertEquals(
+            "the curated favourites and their order survive",
+            listOf("aes", "base64", "vigenere"),
+            after.favorites(),
+        )
+        assertEquals(
+            "no other key may survive the reset",
+            setOf(PrefsKeys.FAVORITES_ORDER),
+            after.entries.keys,
+        )
+    }
+
+    @Test fun restoringDefaultsOnAnEmptyStoreChangesNothing() {
+        assertEquals(0, data().restoredToDefaults().entries.size)
+        val onlyFavourites = data(PrefsKeys.FAVORITES_ORDER to "base64")
+        assertEquals(listOf("base64"), onlyFavourites.restoredToDefaults().favorites())
+    }
+
+    @Test fun theHapticPreferenceIsKeptWhenClearingAndResetWhenRestoring() {
+        val stored = data(
+            PrefsKeys.FAVORITES_ORDER to "base64",
+            PrefsKeys.HAPTIC_FEEDBACK to "false",
+            PrefsKeys.RECENTS to "aes",
+        )
+        assertTrue(
+            "haptics are an appearance-class preference: clearing temporary data keeps them",
+            stored.clearTemporary().string(PrefsKeys.HAPTIC_FEEDBACK) == "false",
+        )
+        assertNull(
+            "restoring defaults removes the stored value, so the app falls back to its default",
+            stored.restoredToDefaults().string(PrefsKeys.HAPTIC_FEEDBACK),
+        )
+        assertTrue("the default is on", stored.restoredToDefaults().bool(PrefsKeys.HAPTIC_FEEDBACK, true))
+    }
 
     @Test fun clearingTemporaryDataKeepsFavourites() {
         val before = data(

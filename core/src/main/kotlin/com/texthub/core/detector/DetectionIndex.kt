@@ -9,6 +9,7 @@ import com.texthub.core.model.DetectionHint
 import com.texthub.core.model.Direction
 import com.texthub.core.model.OperationKind
 import com.texthub.core.model.ToolMeta
+import java.util.concurrent.CancellationException
 
 /**
  * The registry, as the Universal Decoder sees it.
@@ -106,11 +107,17 @@ object DetectionIndex {
         val found = mutableListOf<Candidate>()
         for (entry in entries) {
             if (entry.meta.operationKind == OperationKind.DISPATCH) continue
-            entry.hints.forEach { hint -> match(entry, hint, input, digestShaped)?.let { found += it } }
+            // Candidate isolation: one tool whose hint misbehaves must not abort detection for
+            // every other tool - it only loses its own candidacy (see [candidateIsolated]).
+            entry.hints.forEach { hint ->
+                candidateIsolated { match(entry, hint, input, digestShaped) }?.let { found += it }
+            }
         }
         // Tools that declare no hint of their own are still considered: they are probed by running
         // them, in the order the registry lists them.
-        for (entry in genericProbes) generic(entry, input)?.let { found += it }
+        for (entry in genericProbes) {
+            candidateIsolated { generic(entry, input) }?.let { found += it }
+        }
         return found
             .distinctBy { candidate -> candidate.toolId to candidate.suggestedParams }
             .sortedWith(
@@ -118,6 +125,26 @@ object DetectionIndex {
                     .thenByDescending { it.actionable },
             )
     }
+
+    /**
+     * Runs one candidate's detection and turns an unexpected failure into "no candidate".
+     *
+     * This is the first ring of the candidate isolation the Universal Decoder promises: a defect in
+     * a single hint lambda or a single registered tool must cost that tool its own candidacy, never
+     * the whole detection pass and never the process. `ToolException` is deliberately not special -
+     * a hint that throws it is broken in the same way as one that throws anything else.
+     */
+    private inline fun <T> candidateIsolated(block: () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            null
+        }
+
+    /** Test seam for [candidateIsolated]: the isolation contract, checked directly. */
+    internal inline fun <T> isolatedCandidate(block: () -> T): T? = candidateIsolated(block)
 
     /** The digests [text] could be, one candidate per algorithm. Used by the decoder's hash rule. */
     fun digestCandidates(text: String): List<Candidate> =
@@ -212,6 +239,11 @@ object DetectionIndex {
     /**
      * Runs the tool's own decoding direction. Returns null when the tool refused the input or left it
      * exactly as it was - both mean there is nothing to report for this format.
+     *
+     * Above [FULL_VALIDATION_LIMIT] nothing is validated by decoding it: the cheap character-set
+     * checks still run (a structural hint still reports), but a value that size is not run through
+     * every matching tool on every change of the text - that is what [validatesFully] documents,
+     * and what keeps a large paste from being decoded dozens of times per keystroke.
      */
     private fun validate(
         entry: Entry,
@@ -219,6 +251,7 @@ object DetectionIndex {
         text: String,
         params: Map<String, String>,
     ): Validation? {
+        if (!validatesFully(text)) return null
         val meta = entry.meta
         val outcome = ProcessingEngine.run(
             entry.processor,

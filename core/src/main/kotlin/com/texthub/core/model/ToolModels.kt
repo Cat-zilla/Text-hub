@@ -283,9 +283,20 @@ data class ToolMeta(
      * only when the input decodes and re-encodes to exactly what was pasted.
      */
     val detection: List<DetectionHint> = emptyList(),
+    /**
+     * True for a tool that may create its result **only** when the user presses its own action
+     * (the RSA key pair generator). Selecting the tool, changing a setting, restoring defaults or
+     * any other state change must not run it, so generated key material is never silently created
+     * or replaced behind the user's back. The app skips every automatic path for such a tool and
+     * shows its explicit action instead.
+     */
+    val explicitActionOnly: Boolean = false,
 ) {
     /** What this tool does, derived from its classification so it can never be declared wrongly. */
     val operationKind: OperationKind get() = classification.operationKind
+
+    /** False for a tool that must only run through its own explicit action ([explicitActionOnly]). */
+    val shouldRunAutomatically: Boolean get() = !explicitActionOnly
 
     /** True when the tool cannot run without something only the user knows. */
     val needsKeyMaterial: Boolean get() = params.any { it.sensitive }
