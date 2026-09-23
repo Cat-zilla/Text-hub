@@ -13,6 +13,7 @@ import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.toOctal
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.model.DetectionHint
 
 class OctalProcessor : TextProcessor {
 
@@ -35,6 +36,18 @@ class OctalProcessor : TextProcessor {
                     Choice("continuous", "Continuous"),
                 ),
                 helper = "Continuous output uses three digits per byte.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "01234567 ,;:|\t\n",
+                minLength = 6,
+                label = "Octal bytes",
+                recognise = { text ->
+                    val tokens = text.split(Regex("[\\s,]+")).filter { it.isNotEmpty() }
+                    tokens.size >= 3 && tokens.all { token -> token.length in 3..4 }
+                },
+                evidence = "Every value is a 3-digit octal number, the usual way octal bytes are written.",
             ),
         ),
         info = ToolInfo(

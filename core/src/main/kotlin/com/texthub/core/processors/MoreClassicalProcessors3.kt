@@ -56,7 +56,7 @@ internal object MatrixMod26 {
         3 -> m[0] * (m[4] * m[8] - m[5] * m[7]) -
             m[1] * (m[3] * m[8] - m[5] * m[6]) +
             m[2] * (m[3] * m[7] - m[4] * m[6])
-        else -> throw Errors.cipherParams()
+        else -> throw Errors.unexpectedFailure()
     }
 
     private fun minor(m: IntArray, size: Int, skipRow: Int, skipCol: Int): Int {
@@ -139,7 +139,7 @@ class Hill3Processor : TextProcessor {
         val padded = when (clean.length % 3) {
             0 -> clean
             else -> if (params["padding"] == "none") {
-                throw Errors.cipherParams()
+                throw Errors.blockSizeRequired("Hill 3x3", 3)
             } else {
                 clean + "X".repeat(3 - clean.length % 3)
             }

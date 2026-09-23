@@ -3,6 +3,8 @@ package com.texthub.core
 import com.texthub.core.prefs.PrefsData
 import com.texthub.core.prefs.PrefsKeys
 import com.texthub.core.prefs.formatDataSize
+import com.texthub.core.prefs.moveFavoriteBefore
+import com.texthub.core.prefs.moveFavoriteInDisplayedOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -167,5 +169,59 @@ class PrefsModelTest {
         assertEquals("256", store.paramsFor("aes")["keySize"])
         assertTrue(store.paramsFor("aes").keys.none { it == "password" || it == "key" })
         assertTrue(store.clearTemporary().paramsFor("aes").isEmpty())
+    }
+
+    // ---------------------------------------------------------------- drag stored by id
+
+    @Test fun aDragIsStoredByIDSoFilteredFavouritesCannotShiftIt() {
+        // The favourites of tools that no longer exist are skipped on screen, so the list the user
+        // sees is a subsequence of the stored one: A C E while the store holds A B C D E.
+        val stored = listOf("a", "b", "c", "d", "e")
+        val displayed = listOf("a", "c", "e")
+
+        // C is dragged to the bottom of the on-screen list: it becomes the last favourite.
+        assertEquals(
+            listOf("a", "b", "d", "e", "c"),
+            moveFavoriteInDisplayedOrder(stored, displayed, "c", anchorId = null),
+        )
+        // E is dragged to the top.
+        assertEquals(
+            listOf("e", "a", "b", "c", "d"),
+            moveFavoriteInDisplayedOrder(stored, displayed, "e", anchorId = "a"),
+        )
+    }
+
+    @Test fun theSameDragThroughTheStoreKeepsFavouritesAndWritesTheOrder() {
+        var store = PrefsData().withFavorites(listOf("a", "b", "c", "d", "e"))
+        store = store.moveFavoriteBefore("e", "a")
+        assertEquals(listOf("e", "a", "b", "c", "d"), store.favorites())
+        // Re-read from the stored map: the order is on disk, not only in memory.
+        assertEquals(listOf("e", "a", "b", "c", "d"), PrefsData(store.entries).favorites())
+
+        // Dropping at the end uses a null anchor.
+        store = store.moveFavoriteBefore("a", null)
+        assertEquals(listOf("e", "b", "c", "d", "a"), store.favorites())
+        // Empty temporary data must never touch the order.
+        assertEquals(listOf("e", "b", "c", "d", "a"), PrefsData(store.entries).clearTemporary().favorites())
+    }
+
+    @Test fun aMoveThatChangesNothingDoesNotRewriteTheStore() {
+        val store = PrefsData().withFavorites(listOf("a", "b", "c"))
+        // Already in front of "b": nothing to do.
+        assertEquals(store.entries, store.moveFavoriteBefore("a", "b").entries)
+        // An id that is not stored, and an anchor that is not stored, change nothing either.
+        assertEquals(store.entries, store.moveFavoriteBefore("zz", "a").entries)
+        assertEquals(store.entries, store.moveFavoriteBefore("a", "zz").entries)
+        assertEquals(listOf("a", "b", "c"), store.moveFavoriteBefore("a", "zz").favorites())
+    }
+
+    @Test fun anAnchorThatIsNotDisplayedIsRefusedInsteadOfMovingTheWrongEntry() {
+        val stored = listOf("a", "b", "c", "d")
+        // "c" is not part of what is on screen: the drop is refused, the order is untouched.
+        assertEquals(stored, moveFavoriteInDisplayedOrder(stored, listOf("a", "b"), "a", anchorId = "c"))
+        // A dragged row that is not on screen is refused too.
+        assertEquals(stored, moveFavoriteInDisplayedOrder(stored, listOf("a", "b"), "d", anchorId = "a"))
+        // And the plain move refuses an unknown anchor as well.
+        assertEquals(stored, moveFavoriteBefore(stored, "a", "zz"))
     }
 }

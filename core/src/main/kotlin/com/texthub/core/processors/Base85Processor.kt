@@ -12,6 +12,7 @@ import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.asTextOrFail
+import com.texthub.core.model.DetectionHint
 
 class Base85Processor : TextProcessor {
 
@@ -35,6 +36,25 @@ class Base85Processor : TextProcessor {
                     Choice("z85", "Z85 (ZeroMQ)"),
                 ),
                 helper = "Z85 needs a length that is a multiple of 4 bytes; Ascii85 handles any length.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                prefix = "<~",
+                suffix = "~>",
+                label = "Ascii85 (Adobe wrapper)",
+                evidence = "The data is wrapped in the Adobe <~ ... ~> markers.",
+                structural = true,
+                paramsFor = { mapOf("variant" to "ascii85") },
+            ),
+            DetectionHint(
+                alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                    ".-:+=^!/*?&<>()[]{}@%$#",
+                minLength = 10,
+                multipleOf = 5,
+                label = "Base85 (Z85 shaping)",
+                evidence = "Every character is in the Z85 alphabet and the length is a multiple of five.",
+                paramsFor = { mapOf("variant" to "z85") },
             ),
         ),
         info = ToolInfo(

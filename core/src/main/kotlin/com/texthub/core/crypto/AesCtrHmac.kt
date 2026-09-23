@@ -38,7 +38,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 object AesCtrHmac {
 
-    private const val VERSION: Byte = 0x04
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x04
 
     /** PBKDF2-HMAC-SHA256, 210 000 iterations, 256-bit AES key followed by a 256-bit MAC key. */
     private const val KDF_ID_AES256: Byte = 0x02
@@ -63,6 +64,21 @@ object AesCtrHmac {
      * @param prefixKeySizeInPayload when true (the app does this) a 256-bit key is recorded in the
      *   KDF id field so decryption uses exactly that size.
      */
+    /**
+     * Structural check used by the Universal Decoder: version byte, known KDF id and the documented
+     * layout (header, salt, counter block, ciphertext, 32-byte tag). The tag is still verified.
+     */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean {
+        val bytes = try {
+            Base64Codec.decode(payloadBase64.trim())
+        } catch (e: Exception) {
+            return false
+        }
+        if (bytes.size < PREFIX_LEN + MAC_LEN) return false
+        if (bytes[0] != VERSION) return false
+        return bytes[1] == KDF_ID_AES256 || bytes[1] == KDF_ID_LEGACY
+    }
+
     fun encrypt(
         plaintext: String,
         password: CharArray,

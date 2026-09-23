@@ -19,6 +19,10 @@ import com.texthub.core.util.isAsciiDigit
 import com.texthub.core.util.isAsciiLetter
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.detector.QP_ESCAPE_PATTERN
+import com.texthub.core.detector.ESCAPE_PATTERN
+import com.texthub.core.detector.ENTITY_PATTERN
+import com.texthub.core.model.DetectionHint
 
 /** Base45 (RFC 9285) - the compact encoding used inside QR codes. */
 class Base45Processor : TextProcessor {
@@ -31,6 +35,17 @@ class Base45Processor : TextProcessor {
         classification = Classification.ENCODING,
         encodeLabel = "Encode",
         decodeLabel = "Decode",
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:",
+                mustContain = "0123456789",
+                minLength = 6,
+                label = "Base45",
+                recognise = { text -> text.any { it in 'A'..'Z' } && text.any { it in '0'..'9' } },
+                evidence = "The characters and the length pattern fit Base45, the encoding used by " +
+                    "EU health certificates.",
+            ),
+        ),
         info = ToolInfo(
             summary = "Base45 packs two bytes into three of 45 allowed characters (digits, A-Z " +
                 "and a few symbols). It is designed to survive QR code alphanumeric mode, which is " +
@@ -64,6 +79,26 @@ class QuotedPrintableProcessor : TextProcessor {
         classification = Classification.ENCODING,
         encodeLabel = "Encode",
         decodeLabel = "Decode",
+        detection = listOf(
+            DetectionHint(
+                mustContain = "=",
+                minLength = 4,
+                label = "Quoted-printable",
+                recognise = { text ->
+                    val escapes = QP_ESCAPE_PATTERN.findAll(text).count()
+                    escapes >= 2 || text.contains("=\n") || text.contains("=\r\n")
+                },
+                evidenceFor = { text ->
+                    val escapes = ESCAPE_PATTERN.findAll(text).count()
+                    "Contains $escapes =XX escape${if (escapes == 1) "" else "s"}" +
+                        if (text.contains("=\n") || text.contains("=\r\n")) " and a soft line break" else ""
+                },
+                strongWhen = { text ->
+                    val escapes = ESCAPE_PATTERN.findAll(text).count()
+                    escapes >= 3 || text.contains("=\n") || text.contains("=\r\n")
+                },
+            ),
+        ),
         info = ToolInfo(
             summary = "Quoted-printable keeps ordinary text readable and escapes only what has to " +
                 "be escaped, using =XX for bytes outside the safe range and soft line breaks for " +
@@ -104,6 +139,19 @@ class HtmlEntityProcessor : TextProcessor {
                     Choice("all", "Named entities where possible (&copy;, &mdash;)"),
                     Choice("minimal", "Only safe characters (&amp; &lt; &gt; &quot;)"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                mustContain = "&",
+                minLength = 4,
+                label = "HTML entities",
+                recognise = { text -> ENTITY_PATTERN.containsMatchIn(text) },
+                evidenceFor = { text ->
+                    val entities = ENTITY_PATTERN.findAll(text).count()
+                    "$entities HTML entity reference${if (entities == 1) "" else "s"} such as &amp; or &#65;."
+                },
+                strongWhen = { text -> ENTITY_PATTERN.findAll(text).count() >= 2 },
             ),
         ),
         info = ToolInfo(
@@ -147,6 +195,21 @@ class UnicodeEscapeProcessor : TextProcessor {
                     Choice("braced", "\\uXXXX and \\u{1F600}"),
                     Choice("python", "Python \\uXXXX and \\U0001F600"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                mustContain = "\\",
+                minLength = 6,
+                label = "Unicode escape sequences",
+                recognise = { text ->
+                    ESCAPE_PATTERN.containsMatchIn(text)
+                },
+                evidenceFor = { text ->
+                    val escapes = ESCAPE_PATTERN.findAll(text).count()
+                    "$escapes escape sequence${if (escapes == 1) "" else "s"} such as \\u0041 are present."
+                },
+                strongWhen = { text -> ESCAPE_PATTERN.findAll(text).count() >= 2 },
             ),
         ),
         info = ToolInfo(

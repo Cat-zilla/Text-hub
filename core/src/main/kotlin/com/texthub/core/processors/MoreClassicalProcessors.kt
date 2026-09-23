@@ -296,7 +296,7 @@ class HillCipherProcessor : TextProcessor {
 
     override fun process(input: String, params: Map<String, String>, direction: Direction): String {
         val letters = (params["key"] ?: "").uppercase().filter { it in 'A'..'Z' }
-        if (letters.length != 4) throw Errors.cipherParams()
+        if (letters.length != 4) throw Errors.hillSize(4)
         val a = letters[0] - 'A'
         val b = letters[1] - 'A'
         val c = letters[2] - 'A'

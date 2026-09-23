@@ -17,6 +17,7 @@ object PunycodeCodec {
     private const val DAMP = 700
     private const val INITIAL_BIAS = 72
     private const val INITIAL_N = 128
+    private const val MAX_CODE_POINT = 0x10FFFF
 
     fun encode(text: String): String {
         val codePoints = text.codePoints().toArray().toList()
@@ -87,7 +88,14 @@ object PunycodeCodec {
                 k += BASE
             }
             bias = adapt(i - oldi, out.size + 1, oldi == 0L)
-            n += (i / (out.size + 1)).toInt()
+            val step = (i / (out.size + 1)).toInt()
+            // Both the code point and the running total are checked here rather than after the
+            // list has been built: an out-of-range value would otherwise become an
+            // IllegalArgumentException from appendCodePoint, which is not a ToolException and so
+            // used to be reported to the user as a problem with their cipher settings.
+            if (step < 0 || n > MAX_CODE_POINT - step) throw Errors.punycode()
+            n += step
+            if (!isScalarValue(n)) throw Errors.punycode()
             i %= (out.size + 1)
             if (i > out.size) throw Errors.punycode()
             out.add(i.toInt(), n)
@@ -95,6 +103,10 @@ object PunycodeCodec {
         }
         return buildString { out.forEach { appendCodePoint(it) } }
     }
+
+    /** True for a Unicode scalar value: in range and not a lone surrogate. */
+    private fun isScalarValue(codePoint: Int): Boolean =
+        codePoint in 0..MAX_CODE_POINT && codePoint !in 0xD800..0xDFFF
 
     private fun threshold(k: Int, bias: Int): Int = when {
         k <= bias + TMIN -> TMIN

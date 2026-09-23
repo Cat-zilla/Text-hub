@@ -2,6 +2,7 @@ package com.texthub.core.processors
 
 import com.texthub.core.TextProcessor
 import com.texthub.core.crypto.AesCbcHmac
+import com.texthub.core.crypto.PayloadKeySize
 import com.texthub.core.crypto.JweFormat
 import com.texthub.core.crypto.OpenSslEnc
 import com.texthub.core.crypto.ChaCha20Poly1305
@@ -15,12 +16,13 @@ import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolException
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 /**
  * AES-256-CBC with HMAC-SHA256 authentication (Encrypt-then-MAC).
  * Offered for interoperability with systems that expect CBC rather than GCM.
  */
-class AesCbcProcessor : TextProcessor {
+class AesCbcProcessor : TextProcessor, PayloadKeySize {
 
     override val meta = ToolMeta(
         id = "aescbc",
@@ -108,6 +110,23 @@ class AesCbcProcessor : TextProcessor {
                     "derivation, which is always a single pass.",
             ),
         ),
+        detection = listOf(
+            DetectionHint(
+                label = "Text Hub AES-CBC + HMAC payload",
+                recognise = { text -> AesCbcHmac.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to the Text Hub envelope: version byte 0x02, salt, IV, a " +
+                    "multiple-of-16 ciphertext and a 32-byte HMAC tag.",
+                structural = true,
+            ),
+            DetectionHint(
+                label = "OpenSSL \"Salted__\" file (AES-CBC)",
+                recognise = { text -> OpenSslEnc.looksLikeSalted(text) },
+                evidence = "The Base64 starts with the OpenSSL header \"Salted__\", followed by the " +
+                    "8-byte salt and the AES-CBC ciphertext.",
+                structural = true,
+                paramsFor = { mapOf("format" to "openssl") },
+            ),
+        ),
         info = ToolInfo(
             summary = "AES in CBC mode (128, 192 or 256-bit key) with a separate HMAC-SHA256 tag (Encrypt-then-MAC). The " +
                 "PBKDF2 output is split into an encryption key and a MAC key, and the tag is " +
@@ -177,6 +196,10 @@ class AesCbcProcessor : TextProcessor {
 
     private fun keySizeOf(params: Map<String, String>): Int =
         (params["keySize"] ?: "256").toIntOrNull()?.div(8) ?: 32
+
+    /** Answered by the CBC envelope reader itself; see [PayloadKeySize]. */
+    override fun keySizeOf(payloadBase64: String, password: CharArray): Int? =
+        AesCbcHmac.keySizeOf(payloadBase64, password)
 }
 
 /** The OpenSSL `enc` settings, read from an AES tool's parameters. */
@@ -216,6 +239,15 @@ class ChaChaProcessor : TextProcessor {
                 hint = "Enter a strong password",
                 sensitive = true,
                 helper = "Key derivation: PBKDF2-HMAC-SHA256, 210,000 iterations, random salt.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                label = "Text Hub ChaCha20-Poly1305 payload",
+                recognise = { text -> ChaCha20Poly1305.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to the Text Hub envelope: version byte 0x03, salt, nonce " +
+                    "and tag.",
+                structural = true,
             ),
         ),
         info = ToolInfo(

@@ -35,7 +35,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 object AesCbcHmac {
 
-    private const val VERSION: Byte = 0x02
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x02
 
     /** PBKDF2-HMAC-SHA256, 210 000 iterations, 256-bit AES key followed by a 256-bit MAC key. */
     private const val KDF_ID_AES256: Byte = 0x02
@@ -59,6 +60,22 @@ object AesCbcHmac {
      * @param prefixKeySizeInPayload when true (the app does this) a 256-bit key is recorded in the
      *   KDF id field so decryption uses exactly that size.
      */
+    /**
+     * Structural check used by the Universal Decoder: version byte, known KDF id, a ciphertext that
+     * is a whole number of AES blocks and a 32-byte MAC. Authentication still has to succeed.
+     */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean {
+        val bytes = try {
+            Base64Codec.decode(payloadBase64.trim())
+        } catch (e: Exception) {
+            return false
+        }
+        if (bytes.size < PREFIX_LEN + MAC_LEN + 16) return false
+        if (bytes[0] != VERSION) return false
+        if (bytes[1] != KDF_ID_AES256 && bytes[1] != KDF_ID_LEGACY) return false
+        return (bytes.size - PREFIX_LEN - MAC_LEN) % 16 == 0
+    }
+
     fun encrypt(
         plaintext: String,
         password: CharArray,
@@ -200,7 +217,8 @@ object AesCbcHmac {
 
 object ChaCha20Poly1305 {
 
-    private const val VERSION: Byte = 0x03
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x03
     private const val KDF_ID: Byte = 0x01
     private const val SALT_LEN = 16
     private const val NONCE_LEN = 12
@@ -221,6 +239,18 @@ object ChaCha20Poly1305 {
         true
     } catch (e: GeneralSecurityException) {
         false
+    }
+
+    /** Structural check: version byte, KDF id and the documented minimum length for this layout. */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean {
+        val bytes = try {
+            Base64Codec.decode(payloadBase64.trim())
+        } catch (e: Exception) {
+            return false
+        }
+        if (bytes.size < PREFIX_LEN + 16) return false
+        if (bytes[0] != VERSION) return false
+        return bytes[1] == KDF_ID
     }
 
     fun encrypt(plaintext: String, password: CharArray): String {

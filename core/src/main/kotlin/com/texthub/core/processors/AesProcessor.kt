@@ -3,6 +3,7 @@ package com.texthub.core.processors
 import com.texthub.core.TextProcessor
 import com.texthub.core.crypto.AesGcmPayload
 import com.texthub.core.crypto.JweFormat
+import com.texthub.core.crypto.PayloadKeySize
 import com.texthub.core.crypto.OpenSslEnc
 import com.texthub.core.model.Choice
 import com.texthub.core.model.Classification
@@ -13,13 +14,14 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 /**
  * Modern authenticated encryption: AES-GCM (128, 192 or 256-bit key) with a key derived from the
  * user's password using PBKDF2-HMAC-SHA256 (210 000 iterations) and a fresh random salt + nonce
  * per message.
  */
-class AesProcessor : TextProcessor {
+class AesProcessor : TextProcessor, PayloadKeySize {
 
     override val meta = ToolMeta(
         id = "aes",
@@ -53,6 +55,15 @@ class AesProcessor : TextProcessor {
                 hint = "Enter a strong password",
                 sensitive = true,
                 helper = "Use a long, unique password. If it is lost, the data cannot be recovered.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                label = "Text Hub AES-GCM payload",
+                recognise = { text -> AesGcmPayload.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to the Text Hub envelope: version byte 0x01, salt, IV " +
+                    "and tag of the documented sizes.",
+                structural = true,
             ),
         ),
         info = ToolInfo(
@@ -110,4 +121,12 @@ class AesProcessor : TextProcessor {
 
     private fun keySizeOf(params: Map<String, String>): Int =
         (params["keySize"] ?: "256").toIntOrNull()?.div(8) ?: 32
+
+    /**
+     * Which key size this payload authenticates with, asked by the Universal Decoder when a
+     * Universal-Decoder candidate needs a size the payload does not record. The question is answered
+     * by the same envelope reader that decryption uses, so nothing is duplicated here.
+     */
+    override fun keySizeOf(payloadBase64: String, password: CharArray): Int? =
+        AesGcmPayload.keySizeOf(payloadBase64, password)
 }

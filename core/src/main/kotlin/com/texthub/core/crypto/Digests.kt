@@ -32,13 +32,33 @@ object Digests {
         try {
             MessageDigest.getInstance(algorithm).digest(text.toByteArray(Charsets.UTF_8))
         } catch (e: java.security.NoSuchAlgorithmException) {
-            throw Errors.cipherParams()
+            throw Errors.algorithmUnavailable()
         }
 
     fun hashHex(text: String, algorithm: String): String = hash(text, algorithm).toHex(upper = false)
 }
 
 /** Keyed message authentication: HMAC over the message with a shared secret key. */
+/** The digest a hexadecimal value of this length is usually written as, or null. */
+fun digestAlgorithmOf(hex: String): String? {
+    val compact = hex.trim()
+    if (compact.isEmpty() || !compact.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) return null
+    return when (compact.length) {
+        32 -> "MD5"
+        40 -> "SHA-1"
+        64 -> "SHA-256"
+        128 -> "SHA-512"
+        else -> null
+    }
+}
+
+/** How many bits that digest is, so a report can say why the length is only a hint. */
+fun digestBitsOf(algorithm: String): Int = when (algorithm) {
+    "MD5" -> 128
+    "SHA-1" -> 160
+    else -> algorithm.substringAfter('-').toIntOrNull() ?: 256
+}
+
 object Hmacs {
 
     val ALGORITHMS = listOf("HmacMD5", "HmacSHA1", "HmacSHA256", "HmacSHA384", "HmacSHA512")
@@ -49,7 +69,7 @@ object Hmacs {
             mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), algorithm))
             mac.doFinal(message.toByteArray(Charsets.UTF_8))
         } catch (e: java.security.NoSuchAlgorithmException) {
-            throw Errors.cipherParams()
+            throw Errors.algorithmUnavailable()
         } catch (e: java.security.InvalidKeyException) {
             throw Errors.missingKey()
         }
@@ -145,7 +165,7 @@ object Pbkdf2Hash {
         return try {
             SecretKeyFactory.getInstance(algorithm).generateSecret(spec).encoded
         } catch (e: java.security.NoSuchAlgorithmException) {
-            throw Errors.cipherParams()
+            throw Errors.keyDerivationUnavailable()
         } finally {
             spec.clearPassword()
         }

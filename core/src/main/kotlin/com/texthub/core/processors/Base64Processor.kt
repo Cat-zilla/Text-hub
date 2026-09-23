@@ -12,6 +12,7 @@ import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.model.DetectionHint
 
 class Base64Processor : TextProcessor {
 
@@ -34,6 +35,35 @@ class Base64Processor : TextProcessor {
                     Choice("url", "URL-safe"),
                 ),
                 helper = "URL-safe uses - and _ instead of + and /.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
+                minLength = 8,
+                lengthRule = { it % 4 != 1 },
+                label = "Base64",
+                evidenceFor = { text ->
+                    val compact = text.filterNot { it.isWhitespace() }
+                    "Every character belongs to the Base64 alphabet" +
+                        (if (compact.length % 4 == 0) " and the length is a multiple of four." else ".") +
+                        (if (compact.endsWith("=")) " It ends with padding." else "")
+                },
+                strongWhen = { it.trim().endsWith("=") },
+                validatedFor = { _, output -> if (output.isNotBlank()) "It decodes to readable text." else null },
+                paramsFor = { mapOf("variant" to "standard") },
+            ),
+            DetectionHint(
+                alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=",
+                mustContain = "-_",
+                minLength = 8,
+                lengthRule = { it % 4 != 1 },
+                label = "Base64URL",
+                evidence = "The characters include \"-\" or \"_\", which only the URL-safe Base64 " +
+                    "alphabet uses, and the length fits Base64.",
+                strongWhen = { it.trim().endsWith("=") },
+                validatedFor = { _, output -> if (output.isNotBlank()) "It decodes to readable text." else null },
+                paramsFor = { mapOf("variant" to "url") },
             ),
         ),
         info = ToolInfo(

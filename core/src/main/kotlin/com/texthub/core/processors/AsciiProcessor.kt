@@ -12,6 +12,7 @@ import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.isAscii
 import com.texthub.core.util.utf8Bytes
+import com.texthub.core.model.DetectionHint
 
 /**
  * ASCII conversions. ASCII is a 7-bit character set (values 0-127) and is *not* the same
@@ -39,6 +40,19 @@ class AsciiProcessor : TextProcessor {
                     Choice("binary", "Binary (01000001)"),
                     Choice("hex", "Hex (41)"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789 ,;:|\t\n",
+                minLength = 3,
+                label = "ASCII values",
+                recognise = { text ->
+                    val tokens = text.split(Regex("[\\s,]+")).filter { it.isNotEmpty() }
+                    tokens.size >= 2 && tokens.all { token -> token.toIntOrNull()?.let { it in 0..127 } == true }
+                },
+                evidence = "Numbers in the 0-127 range, which is the ASCII table.",
+                paramsFor = { mapOf("mode" to "decimal") },
             ),
         ),
         info = ToolInfo(

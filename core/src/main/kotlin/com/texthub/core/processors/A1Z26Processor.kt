@@ -10,6 +10,7 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 /** A1Z26: A=1, B=2 ... Z=26. */
 class A1Z26Processor : TextProcessor {
@@ -45,6 +46,30 @@ class A1Z26Processor : TextProcessor {
                     Choice("bar", "Bar |"),
                 ),
                 helper = "Keeps word boundaries visible when encoding.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789-.,;:/| \t\n\r",
+                minLength = 3,
+                label = "A1Z26",
+                // "1.2.3" is far more likely to be a version number than a code: dotted input needs a
+                // longer run before it counts as evidence.
+                recognise = { text ->
+                    val numbers = Regex("\\d+").findAll(text).map { it.value }.toList()
+                    val values = numbers.mapNotNull { it.toIntOrNull() }
+                    val separators = text.filterNot { it.isDigit() }.trim()
+                    numbers.size >= 3 && values.size == numbers.size &&
+                        values.all { it in 1..26 } &&
+                        numbers.none { it.startsWith("0") && it.length > 1 } &&
+                        !(separators.all { it == '.' } && numbers.size < 4)
+                },
+                evidenceFor = { text ->
+                    val numbers = Regex("\\d+").findAll(text).map { it.value }.toList()
+                    val separators = text.filterNot { it.isDigit() }.trim()
+                    "All ${numbers.size} numbers are between 1 and 26 - the positions of the letters " +
+                        "A-Z - separated by \"$separators\"."
+                },
             ),
         ),
         info = ToolInfo(

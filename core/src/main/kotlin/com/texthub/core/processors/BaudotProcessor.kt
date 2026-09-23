@@ -11,6 +11,7 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 /**
  * Baudot / International Telegraph Alphabet No. 2 (ITA2).
@@ -62,6 +63,18 @@ class BaudotProcessor : TextProcessor {
                     Choice("error", "Show an error"),
                     Choice("skip", "Skip them"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "01",
+                minLength = 10,
+                label = "Baudot/ITA2 (5-bit groups)",
+                recognise = { text ->
+                    val digits = text.count { it == '0' || it == '1' }
+                    digits >= 10 && digits % 5 == 0
+                },
+                evidence = "Only 0 and 1 are present and they group into 5-bit Baudot/ITA2 characters.",
             ),
         ),
         info = ToolInfo(

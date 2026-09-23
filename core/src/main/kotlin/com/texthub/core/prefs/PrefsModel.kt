@@ -51,6 +51,37 @@ data class PrefsEntry(val key: String, val value: String) {
 }
 
 /** The remembered settings, as a map, with the operations the app needs. */
+/**
+ * The pure move behind a favourites drag, shared by the storage layer and by the picker, so what the
+ * list shows after a drop and what is written to disk cannot disagree.
+ *
+ * [order] is the stored order, [displayed] is the list as the user sees it (the same order, minus
+ * favourites that are filtered out), [draggedId] is the row being moved and [anchorId] the row it
+ * must end up in front of (null = move to the end).
+ */
+fun moveFavoriteInDisplayedOrder(
+    order: List<String>,
+    displayed: List<String>,
+    draggedId: String,
+    anchorId: String?,
+): List<String> {
+    if (displayed.isEmpty() || displayed.indexOf(draggedId) < 0) return order
+    // The anchor is a row of the *displayed* list, which is a subsequence of the stored one, so the
+    // same id is valid for the stored list as well - which is exactly why the move is done by id
+    // and never by counting screen positions.
+    if (anchorId != null && displayed.indexOf(anchorId) < 0) return order
+    return moveFavoriteBefore(order, draggedId, anchorId)
+}
+
+/** Moves [draggedId] directly in front of [anchorId] (null = to the end). */
+fun moveFavoriteBefore(order: List<String>, draggedId: String, anchorId: String?): List<String> {
+    val from = order.indexOf(draggedId)
+    if (from < 0) return order
+    val rest = order.toMutableList().also { it.removeAt(from) }
+    val at = if (anchorId == null) rest.size else rest.indexOf(anchorId).let { if (it < 0) return order else it }
+    return rest.toMutableList().also { it.add(at, draggedId) }
+}
+
 data class PrefsData(val entries: Map<String, String> = emptyMap()) {
 
     // ------------------------------------------------------------------ favourites (ordered)
@@ -92,6 +123,26 @@ data class PrefsData(val entries: Map<String, String> = emptyMap()) {
         val moved = current.removeAt(from)
         current.add(target, moved)
         return withFavorites(current)
+    }
+
+    /**
+     * Moves [draggedId] so that it lands exactly where the drag released it, described with ids
+     * instead of screen positions.
+     *
+     * The favourites list on screen is a *subsequence* of the stored order (a favourite whose tool
+     * no longer exists is skipped, and a search hides rows), so an index counted on screen is not an
+     * index in the stored list. [anchorId] is the id of the row the dragged one must end up in front
+     * of, taken from the list as it is displayed - null means "at the end". An id that is not stored
+     * any more moves nothing rather than moving an unrelated entry.
+     */
+    fun moveFavoriteBefore(
+        draggedId: String,
+        anchorId: String?,
+        registryOrder: List<String> = emptyList(),
+    ): PrefsData {
+        val current = favorites(registryOrder)
+        val next = moveFavoriteBefore(current, draggedId, anchorId)
+        return if (next == current) this else withFavorites(next)
     }
 
     // ------------------------------------------------------------------ recents

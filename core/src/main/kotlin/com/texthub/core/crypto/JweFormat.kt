@@ -61,6 +61,16 @@ object JweFormat {
     // ------------------------------------------------------------------ detection + header
 
     /** True when the text has the shape of a compact JWE and its header names alg and enc. */
+    /**
+     * The key-wrapping algorithms Text Hub implements. A token that uses anything else is *named*
+     * (algorithm and content encryption included) rather than guessed at; the reader never pretends
+     * it can unwrap what it cannot.
+     */
+    val SUPPORTED_ALGS: Set<String> = setOf("dir", "RSA-OAEP", "RSA-OAEP-256")
+
+    /** True when this build can open a token with that key-wrapping algorithm. */
+    fun isSupportedAlg(alg: String): Boolean = alg in SUPPORTED_ALGS
+
     fun looksLikeJwe(text: String): Boolean = header(text) != null
 
     /** The protected header, or null when this is not a readable compact JWE. */

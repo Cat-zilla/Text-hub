@@ -36,7 +36,44 @@ object Errors {
         ToolException("The substitution alphabet must contain exactly $expected characters.")
     fun substitutionDuplicate() = ToolException("The substitution alphabet must contain unique characters.")
     fun substitutionAlpha() = ToolException("The substitution alphabet may only contain letters.")
-    fun cipherParams() = ToolException("These cipher settings are not valid. Please check the supplied key and parameters.")
+
+    // There is deliberately no generic "these cipher settings are not valid" message any more.
+    // Every cipher failure now names the thing that is actually wrong (a key that needs letters, a
+    // length that has to be a multiple of the block size, a key size that does not match the
+    // payload), and the processing engine no longer reports an unexpected failure as a cipher
+    // problem. That message used to appear in front of people who had pasted an encoded string
+    // into a tool that never had a cipher setting to begin with.
+
+    /**
+     * A failure the user did not cause and cannot fix by changing a setting: a defect or an
+     * unforeseen input shape. The wording deliberately mentions no cipher, key or parameter,
+     * because none of them was involved - and it never carries the input, the settings or a
+     * stack trace.
+     */
+    fun unexpectedFailure() = ToolException(
+        "Text Hub could not process that input. Nothing was changed - try again, and use a shorter " +
+            "or simpler value if it keeps happening."
+    )
+
+    /** An algorithm name that this build does not provide (the lists come from the JCA itself). */
+    fun algorithmUnavailable() =
+        ToolException("That algorithm is not available in this build of Text Hub. Pick one from the list.")
+
+    /** A key-derivation algorithm this build does not provide. */
+    fun keyDerivationUnavailable() =
+        ToolException("That key-derivation method is not available in this build. Pick one from the list.")
+
+    /** A keyed alphabet (Vigenere and friends) with fewer than two usable characters. */
+    fun alphabetTooShort() =
+        ToolException("The alphabet needs at least two different characters. Check the alphabet setting.")
+
+    /** A block cipher that needs a whole number of blocks and has padding switched off. */
+    fun blockSizeRequired(tool: String, size: Int) =
+        ToolException("$tool works in blocks of $size, so the number of letters must be a multiple of $size. Add letters or switch padding on.")
+
+    /** Playfair reads the input in pairs. */
+    fun pairsRequired(tool: String) =
+        ToolException("$tool works on pairs of letters, so the input needs an even number of letters. One letter may be missing.")
     fun aes() = ToolException("Unable to decrypt. The password or encrypted data may be incorrect.")
     fun aesFormat() = ToolException(
         "This is not a Text Hub AES-GCM payload and it is not an OpenSSL enc file either. A Text Hub " +

@@ -112,7 +112,8 @@ object RsaPem {
  */
 object RsaHybrid {
 
-    private const val VERSION: Byte = 0x11
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x11
     private const val ALGORITHM: Byte = 0x01
     private const val AES_KEY_BYTES = 32
     private const val IV_LEN = 12
@@ -126,6 +127,22 @@ object RsaHybrid {
      * Unwraps a content encryption key of a JWE token (RFC 7516) with the private key.
      * `alg` is the token's own `alg` value: RSA-OAEP uses SHA-1, RSA-OAEP-256 uses SHA-256.
      */
+    /**
+     * Structural check used by the Universal Decoder: version byte, algorithm byte, and a wrapped-key
+     * length that fits the rest of the payload. The GCM tag is still verified on decryption.
+     */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean {
+        val bytes = try {
+            Base64Codec.decode(payloadBase64.trim())
+        } catch (e: Exception) {
+            return false
+        }
+        if (bytes.size < HEADER_LEN + IV_LEN + 16) return false
+        if (bytes[0] != VERSION || bytes[1] != ALGORITHM) return false
+        val wrappedLength = ((bytes[2].toInt() and 0xFF) shl 8) or (bytes[3].toInt() and 0xFF)
+        return wrappedLength > 0 && HEADER_LEN + wrappedLength + IV_LEN + 16 <= bytes.size
+    }
+
     fun unwrapJweCek(wrapped: ByteArray, alg: String, keyText: String): ByteArray {
         val privateKey = RsaPem.privateKey(keyText)
         val transformation = when (alg) {

@@ -10,6 +10,7 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 class UrlProcessor : TextProcessor {
 
@@ -31,6 +32,25 @@ class UrlProcessor : TextProcessor {
                     Choice("standard", "RFC 3986 (%20 for space)"),
                     Choice("form", "Form (+ for space)"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                mustContain = "%",
+                minLength = 4,
+                label = "URL (percent) encoding",
+                labelFor = { text ->
+                    if (text.contains("%20") || text.contains("+")) "URL encoding (form style)"
+                    else "URL (percent) encoding"
+                },
+                evidenceFor = { text ->
+                    val escapes = Regex("%[0-9A-Fa-f]{2}").findAll(text).count()
+                    "$escapes percent-escaped byte${if (escapes == 1) "" else "s"} such as %20."
+                },
+                paramsFor = { text ->
+                    if (text.contains("%20") || text.contains("+")) mapOf("variant" to "form")
+                    else mapOf("variant" to "standard")
+                },
             ),
         ),
         info = ToolInfo(

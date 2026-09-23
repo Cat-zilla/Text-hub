@@ -118,7 +118,7 @@ class PlayfairProcessor : TextProcessor {
         }
 
         val text = input.uppercase().filter { it in square }
-        if (text.length % 2 != 0) throw Errors.cipherParams()
+        if (text.length % 2 != 0) throw Errors.pairsRequired("Playfair")
         val out = StringBuilder()
         var i = 0
         while (i < text.length) {
@@ -126,7 +126,7 @@ class PlayfairProcessor : TextProcessor {
             val b = text[i + 1]
             val pa = square.indexOf(a)
             val pb = square.indexOf(b)
-            if (pa < 0 || pb < 0) throw Errors.cipherParams()
+            if (pa < 0 || pb < 0) throw Errors.unexpectedFailure()
             val ra = pa / size
             val ca = pa % size
             val rb = pb / size

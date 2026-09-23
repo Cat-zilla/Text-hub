@@ -17,6 +17,11 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.detector.ACE_PREFIX
+import com.texthub.core.detector.aceLabels
+import com.texthub.core.detector.domainLabels
+import com.texthub.core.detector.tokensAre
+import com.texthub.core.model.DetectionHint
 
 /** Base91 - a denser printable encoding than Base85, used by some binary-to-text pipelines. */
 class Base91Processor : TextProcessor {
@@ -30,6 +35,16 @@ class Base91Processor : TextProcessor {
         encodeLabel = "Encode",
         decodeLabel = "Decode",
         params = emptyList(),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" +
+                    "!#$%&()*+,./:;<=>?@[]^_`{|}~\"",
+                minLength = 6,
+                label = "Base91",
+                evidence = "Every character belongs to the Base91 alphabet, which packs two characters " +
+                    "into roughly 13 bits.",
+            ),
+        ),
         info = ToolInfo(
             summary = "Base91 packs roughly 13 bits into every two characters, so it is denser " +
                 "than Base64 and stays copy-paste safe. It is an encoding: reversible, not secret.",
@@ -64,6 +79,29 @@ class PunycodeProcessor : TextProcessor {
         encodeLabel = "Encode",
         decodeLabel = "Decode",
         params = emptyList(),
+        detection = listOf(
+            DetectionHint(
+                labelFor = { text ->
+                    if (domainLabels(text).size == 1) "Punycode (ACE) label" else "Internationalised domain name"
+                },
+                recognise = { text -> aceLabels(text).isNotEmpty() },
+                evidenceFor = { text ->
+                    val labels = aceLabels(text)
+                    if (labels.size == 1) {
+                        "The label carries the \"$ACE_PREFIX\" ACE prefix used for internationalised " +
+                            "domain names."
+                    } else {
+                        "The label \"${labels.first().take(24)}\" carries the \"$ACE_PREFIX\" ACE prefix; " +
+                            "each label of a domain is decoded on its own."
+                    }
+                },
+                structural = true,
+                runnableFor = { text -> domainLabels(text).size == 1 },
+                unrunnableNote = "That is a whole internationalised domain name, and the ACE prefix " +
+                    "belongs to one label at a time. Paste the single label you want to read (for " +
+                    "example xn--mnchen-3ya) and Text Hub decodes it.",
+            ),
+        ),
         info = ToolInfo(
             summary = "Punycode turns non-ASCII text into an ASCII-only form, which is how domain " +
                 "names with accents or non-Latin scripts are transmitted (xn--mnchen-3ya.de).",
@@ -76,13 +114,23 @@ class PunycodeProcessor : TextProcessor {
                 "Encoding, not encryption. Punycode is also how lookalike domain names are built, " +
                     "so check a decoded label before opening a link.",
             ),
-            convention = "RFC 3492; the xn-- prefix used by domain names is added by the DNS, not by this tool.",
+            convention = "RFC 3492. The xn-- prefix is added by the DNS rather than by this codec, " +
+                "so decoding accepts labels with or without it.",
         ),
         keywords = listOf("punycode", "idn", "domain", "internationalised", "rfc3492"),
     )
 
-    override fun process(input: String, params: Map<String, String>, direction: Direction): String =
-        if (direction == Direction.ENCODE) PunycodeCodec.encode(input) else PunycodeCodec.decode(input)
+    override fun process(input: String, params: Map<String, String>, direction: Direction): String {
+        if (direction == Direction.ENCODE) return PunycodeCodec.encode(input)
+        // Domain names carry the "xn--" ACE prefix, which the DNS adds rather than this codec. A
+        // label pasted straight out of a browser or a certificate must therefore still decode, so
+        // the prefix is stripped per label before decoding.
+        val cleaned = input.split('.').joinToString(".") { label ->
+            if (label.startsWith(ACE_PREFIX, ignoreCase = true)) label.substring(ACE_PREFIX.length) else label
+        }
+        return PunycodeCodec.decode(cleaned)
+    }
+
 }
 
 /** Braille cell display: every code unit shown as four 8-dot cells. */
@@ -97,6 +145,23 @@ class BrailleProcessor : TextProcessor {
         encodeLabel = "To Braille cells",
         decodeLabel = "From Braille cells",
         params = emptyList(),
+        detection = listOf(
+            DetectionHint(
+                minLength = 2,
+                label = "Braille (Unicode)",
+                recognise = { text ->
+                    val braille = text.count { it.code in 0x2800..0x28FF }
+                    braille >= 2 && braille * 2 >= text.length
+                },
+                evidenceFor = { text ->
+                    val braille = text.count { it.code in 0x2800..0x28FF }
+                    "$braille characters come from the Unicode Braille block (U+2800-U+28FF)."
+                },
+                strongWhen = { text ->
+                    text.all { it.code in 0x2800..0x28FF || it == ' ' || it == '\n' || it == '\r' || it == '\t' }
+                },
+            ),
+        ),
         info = ToolInfo(
             summary = "Shows each 16-bit code unit as four Braille cells, one hexadecimal nibble " +
                 "each (dots 1-4 are the high nibble, dots 5-8 the low nibble). The Unicode Braille " +
@@ -130,6 +195,15 @@ class RomanProcessor : TextProcessor {
         encodeLabel = "To Roman",
         decodeLabel = "To numbers",
         params = emptyList(),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "IVXLCDMivxlcdm",
+                minLength = 2,
+                label = "Roman numerals",
+                evidence = "Only the Roman numeral letters I, V, X, L, C, D and M are present, and they " +
+                    "parse as a number.",
+            ),
+        ),
         info = ToolInfo(
             summary = "Converts numbers between 1 and 3999 to Roman numerals and back. Tokens " +
                 "that are not numbers (or not valid numerals) are left untouched, and malformed " +
@@ -183,6 +257,16 @@ class Utf16Processor : TextProcessor {
                 ),
             ),
         ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789abcdefABCDEF ,;:|\t\n",
+                minLength = 9,
+                label = "UTF-16 code units (hex)",
+                recognise = { text -> tokensAre(text, width = 4) },
+                evidence = "Every value is a 4-digit hexadecimal unit, which is how UTF-16 is written here.",
+                paramsFor = { mapOf("format" to "hex") },
+            ),
+        ),
         info = ToolInfo(
             summary = "Every 16-bit UTF-16 code unit of your text, including the surrogate pairs " +
                 "that make an emoji two units. This is the layer where most \"length\" bugs live.",
@@ -232,6 +316,16 @@ class Utf32Processor : TextProcessor {
                     Choice(Utf32Codec.FORMAT_DECIMAL, "Decimal (128512)"),
                     Choice(Utf32Codec.FORMAT_CSHARP, "Escapes (\\U0001F600)"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789abcdefABCDEF ,;:|\t\n",
+                minLength = 17,
+                label = "Unicode code points (hex)",
+                recognise = { text -> tokensAre(text, width = 8) },
+                evidence = "Every value is an 8-digit hexadecimal code point.",
+                paramsFor = { mapOf("format" to "hex") },
             ),
         ),
         info = ToolInfo(

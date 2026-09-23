@@ -12,6 +12,11 @@ import com.texthub.core.model.ToolException
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.Json
+import com.texthub.core.detector.jweLabelFor
+import com.texthub.core.detector.jwtParts
+import com.texthub.core.detector.unsupportedJwe
+import com.texthub.core.detector.unsupportedJweBecause
+import com.texthub.core.model.DetectionHint
 
 /**
  * Formats or minifies JSON. The parser is a small self-contained one so the app keeps its promise
@@ -40,6 +45,18 @@ class JsonProcessor : TextProcessor {
                     Choice("tabs", "Indent (tabs)"),
                     Choice("keys", "List the keys it contains"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                minLength = 2,
+                label = "JSON document",
+                recognise = { text -> text.startsWith("{") || text.startsWith("[") },
+                evidenceFor = { text ->
+                    "The text starts with ${if (text.startsWith("{")) "a brace" else "a bracket"} and " +
+                        "parses as JSON."
+                },
+                acceptsSameOutput = true,
             ),
         ),
         info = ToolInfo(
@@ -417,6 +434,27 @@ class JwtProcessor : TextProcessor {
         decodeLabel = "Inspect",
         symmetric = true,
         params = emptyList(),
+        detection = listOf(
+            DetectionHint(
+                minLength = 8,
+                label = "JSON Web Token",
+                recognise = { text -> jwtParts(text) != null },
+                evidence = "The first part starts with the Base64URL form of '{\"', which is how a JWT " +
+                    "header begins.",
+                acceptsSameOutput = true,
+            ),
+            DetectionHint(
+                minLength = 8,
+                labelFor = { text -> jweLabelFor(text) ?: "JWE compact token" },
+                recognise = { text -> unsupportedJwe(text) },
+                evidenceFor = { text -> unsupportedJweBecause(text) },
+                structural = true,
+                runnable = false,
+                unrunnableNote = "Text Hub reads JWE tokens whose content key is not wrapped " +
+                    "(alg=dir) and tokens wrapped with RSA-OAEP. This token uses a key-wrapping " +
+                    "algorithm Text Hub does not implement, so it is named rather than guessed at.",
+            ),
+        ),
         info = ToolInfo(
             summary = "Shows the header and payload of a JSON Web Token, the algorithm it claims " +
                 "and when it expires. The signature is never checked, because checking it needs " +

@@ -12,6 +12,7 @@ import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.asTextOrFail
+import com.texthub.core.model.DetectionHint
 
 class Base58Processor : TextProcessor {
 
@@ -35,6 +36,17 @@ class Base58Processor : TextProcessor {
                     Choice("flickr", "Flickr"),
                 ),
                 helper = "The Bitcoin alphabet is the most widely used variant.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz",
+                minLength = 4,
+                label = "Base58",
+                evidence = "Every character is in the Base58 alphabet, which leaves out 0, O, I and l " +
+                    "(and + and /). Base58 does not record which alphabet wrote it, so the Bitcoin " +
+                    "alphabet is assumed.",
+                paramsFor = { mapOf("variant" to "bitcoin") },
             ),
         ),
         info = ToolInfo(

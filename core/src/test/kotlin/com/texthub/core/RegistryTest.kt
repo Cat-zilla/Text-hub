@@ -110,6 +110,9 @@ class RegistryTest {
             "case", "linetools", "leet", "nato", "caesarbrute",
             // One-way or verification-only tools, covered by their own tests.
             "hash", "hmac", "pbkdf2", "checksum", "textstats",
+            // The Universal Decoder is a one-way dispatcher: it reports what it found instead of
+            // having a reverse direction (UniversalDecoderTest covers every format it handles).
+            "universal",
             // Letters-only ciphers (punctuation is dropped by design) and the regex tester.
             "hill3", "trifid", "adfgx", "regex",
             // Generates fresh key material on every run, so it has no round trip.

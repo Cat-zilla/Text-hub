@@ -1,6 +1,7 @@
 package com.texthub.core
 
 import com.texthub.core.codec.Base64Codec
+import com.texthub.core.model.Classification
 import com.texthub.core.model.Direction
 import com.texthub.core.model.ParamKind
 import com.texthub.core.model.ToolCategory
@@ -135,10 +136,16 @@ class ToolReviewPassTwoTest {
 
     @Test fun aPasswordIsNeverPersistedAndNeverBlank() {
         tools.forEach { processor ->
-            processor.meta.params.filter { it.kind == ParamKind.PASSWORD }.forEach { spec ->
-                assertTrue("${processor.meta.id}.${spec.key} must be sensitive", spec.sensitive)
-                assertTrue("${processor.meta.id}.${spec.key} must be required", spec.required)
-                assertTrue("${processor.meta.id}.${spec.key} must start empty", spec.defaultValue.isEmpty())
+            val meta = processor.meta
+            // Whether a dispatcher needs a secret is decided by the input it is given, so its
+            // password field may be optional - but it is still sensitive (never written to disk),
+            // still starts empty, and the field itself still refuses to be used as a blank secret
+            // when the payload does need one (the decoded diagnosis asks for it by name).
+            val dispatcher = meta.classification == Classification.DETECTION
+            meta.params.filter { it.kind == ParamKind.PASSWORD }.forEach { spec ->
+                assertTrue("${meta.id}.${spec.key} must be sensitive", spec.sensitive)
+                if (!dispatcher) assertTrue("${meta.id}.${spec.key} must be required", spec.required)
+                assertTrue("${meta.id}.${spec.key} must start empty", spec.defaultValue.isEmpty())
             }
         }
     }

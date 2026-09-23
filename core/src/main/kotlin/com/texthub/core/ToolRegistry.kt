@@ -1,6 +1,7 @@
 package com.texthub.core
 
 import com.texthub.core.model.Direction
+import com.texthub.core.model.Errors
 import com.texthub.core.model.ProcessOutcome
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolException
@@ -54,6 +55,7 @@ import com.texthub.core.processors.TextDiffProcessor
 import com.texthub.core.processors.TextStatsProcessor
 import com.texthub.core.processors.TrifidProcessor
 import com.texthub.core.processors.Utf16Processor
+import com.texthub.core.processors.UniversalDecoderProcessor
 import com.texthub.core.processors.Utf32Processor
 import com.texthub.core.processors.Base32Processor
 import com.texthub.core.processors.Base58Processor
@@ -86,7 +88,17 @@ import com.texthub.core.processors.XorProcessor
  */
 object ToolRegistry {
 
-    val all: List<TextProcessor> = listOf(
+    /**
+     * Every registered tool in presentation order.
+     *
+     * The list is sorted by [ToolMeta.pinnedFirst], so a tool that must lead the picker does so
+     * because of its own metadata rather than because of where it happens to sit in this file. The
+     * sort is stable, so the order of the remaining tools is exactly the order below.
+     */
+    private val registered: List<TextProcessor> = listOf(
+        // Smart tools: the dispatcher that recognises a format and hands the work to the tool for
+        // it. It leads the list, and favourites order never affects this list.
+        UniversalDecoderProcessor(),
         // Secure encryption - all authenticated constructions using platform primitives.
         // The AES tools take the key size (128/192/256) as a setting and detect it again on
         // decrypt; then AES-CTR, raw-key AES-GCM and the RSA hybrid.
@@ -168,6 +180,8 @@ object ToolRegistry {
         XorProcessor(),
     )
 
+    val all: List<TextProcessor> = registered.sortedWith(compareByDescending { it.meta.pinnedFirst })
+
     private val byId: Map<String, TextProcessor> = all.associateBy { it.meta.id }
 
     fun get(id: String): TextProcessor = byId[id] ?: byId.getValue("base64")
@@ -208,9 +222,13 @@ object ProcessingEngine {
         } catch (e: ToolException) {
             ProcessOutcome(error = e.message ?: "That input could not be processed.", durationMs = 0)
         } catch (e: Exception) {
-            // Never surface a raw stack trace to the user.
+            // Never surface a raw stack trace to the user, and never blame the cipher settings:
+            // this branch means the processor failed for a reason it did not describe, which has
+            // nothing to do with keys or parameters. (Before 1.6.1 every unexpected failure was
+            // reported as "these cipher settings are not valid", which is how a decoding bug in one
+            // format looked like a problem with the password the user had typed into another one.)
             ProcessOutcome(
-                error = "These cipher settings are not valid. Please check the supplied key and parameters.",
+                error = Errors.unexpectedFailure().message,
                 durationMs = 0,
             )
         }

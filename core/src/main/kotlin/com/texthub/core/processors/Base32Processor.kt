@@ -12,6 +12,7 @@ import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.model.DetectionHint
 
 class Base32Processor : TextProcessor {
 
@@ -34,6 +35,18 @@ class Base32Processor : TextProcessor {
                     Choice("hex", "Base32 Hex"),
                     Choice("crockford", "Crockford (no I, L, O, U)"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567=",
+                minLength = 8,
+                multipleOf = 8,
+                label = "Base32",
+                evidence = "Only Base32 characters (A-Z and 2-7) are present and the length is a " +
+                    "multiple of eight.",
+                strongWhen = { it.trim().endsWith("=") },
+                paramsFor = { mapOf("variant" to "standard") },
             ),
         ),
         info = ToolInfo(

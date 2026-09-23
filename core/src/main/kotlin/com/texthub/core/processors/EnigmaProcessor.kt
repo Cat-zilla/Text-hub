@@ -58,9 +58,14 @@ internal class EnigmaMachine(
             pos[i] = positions[i] - 'A'
         }
         for (pair in plugboard.split(Regex("\\s+")).filter { it.isNotBlank() }) {
-            if (pair.length != 2 || !pair[0].isLetter() || !pair[1].isLetter()) throw Errors.enigmaPlugboard()
-            val a = pair[0].uppercaseChar() - 'A'
-            val b = pair[1].uppercaseChar() - 'A'
+            // A-Z only: `isLetter()` is true for letters of every alphabet, and "é" would then
+            // index the wiring array out of range - a crash the user cannot read or act on.
+            if (pair.length != 2) throw Errors.enigmaPlugboard()
+            val first = pair[0].uppercaseChar()
+            val second = pair[1].uppercaseChar()
+            if (first !in 'A'..'Z' || second !in 'A'..'Z') throw Errors.enigmaPlugboard()
+            val a = first - 'A'
+            val b = second - 'A'
             if (a == b) throw Errors.enigmaPlugboard()
             plug[a] = b
             plug[b] = a
@@ -316,7 +321,7 @@ class KeyedAlphabetProcessor : TextProcessor {
             .toList()
             .distinct()
             .joinToString("")
-        if (alphabet.length < 2) throw Errors.cipherParams()
+        if (alphabet.length < 2) throw Errors.alphabetTooShort()
         val key = (params["key"] ?: "").uppercase().filter { it in alphabet }
         if (key.isEmpty()) throw Errors.missingKey()
         val variant = params["variant"] ?: "vigenere"

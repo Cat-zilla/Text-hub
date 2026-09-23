@@ -13,6 +13,8 @@ import com.texthub.core.util.parseHex
 import com.texthub.core.util.toHex
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.detector.DetectionIndex
+import com.texthub.core.model.DetectionHint
 
 class HexProcessor : TextProcessor {
 
@@ -35,6 +37,27 @@ class HexProcessor : TextProcessor {
                     Choice("space", "Space separated"),
                     Choice("comma", "Comma separated"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789abcdefABCDEF",
+                minLength = 4,
+                multipleOf = 2,
+                label = "Hexadecimal data",
+                evidenceFor = { text ->
+                    val compact = text.filterNot { it.isWhitespace() }
+                    "${compact.length} hexadecimal digits with an even number of them."
+                },
+                validatedFor = { _, output ->
+                    if (DetectionIndex.isReadableText(output)) {
+                        "They decode to readable text."
+                    } else {
+                        "They decode to bytes that are not valid text, so this may be a digest or " +
+                            "binary data rather than encoded text."
+                    }
+                },
+                paramsFor = { mapOf("format" to "continuous") },
             ),
         ),
         info = ToolInfo(

@@ -3,6 +3,7 @@ package com.texthub.core.processors
 import com.texthub.core.TextProcessor
 import com.texthub.core.crypto.AesCbcHmac
 import com.texthub.core.crypto.AesCtrHmac
+import com.texthub.core.crypto.PayloadKeySize
 import com.texthub.core.crypto.AesGcmPayload
 import com.texthub.core.crypto.JweFormat
 import com.texthub.core.crypto.OpenSslEnc
@@ -19,12 +20,15 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.detector.jweLabelFor
+import com.texthub.core.detector.pemLabelFor
+import com.texthub.core.model.DetectionHint
 
 /**
  * AES-CTR with Encrypt-then-MAC. A stream-cipher mode that is common in older protocols; the
  * counter block is random per message and the result is authenticated with a separate HMAC key.
  */
-class AesCtrProcessor : TextProcessor {
+class AesCtrProcessor : TextProcessor, PayloadKeySize {
 
     override val meta = ToolMeta(
         id = "aesctr",
@@ -49,6 +53,15 @@ class AesCtrProcessor : TextProcessor {
                     "key size is recorded in the message and must match on decrypt.",
             ),
             passwordSpec("Use AES-GCM unless a system you talk to expects CTR."),
+        ),
+        detection = listOf(
+            DetectionHint(
+                label = "Text Hub AES-CTR + HMAC payload",
+                recognise = { text -> AesCtrHmac.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to the Text Hub envelope: version byte 0x04, salt, " +
+                    "counter block and a 32-byte HMAC tag.",
+                structural = true,
+            ),
         ),
         info = ToolInfo(
             summary = "AES in CTR mode with a fresh random counter block per message and an " +
@@ -102,6 +115,10 @@ class AesCtrProcessor : TextProcessor {
 
     private fun keySizeOf(params: Map<String, String>): Int =
         (params["keySize"] ?: "256").toIntOrNull()?.div(8) ?: 32
+
+    /** Answered by the CTR envelope reader itself; see [PayloadKeySize]. */
+    override fun keySizeOf(payloadBase64: String, password: CharArray): Int? =
+        AesCtrHmac.keySizeOf(payloadBase64, password)
 }
 
 /**
@@ -159,6 +176,35 @@ class AesRawKeyProcessor : TextProcessor {
                 ),
                 helper = "Only used when Text Hub writes a JWE token. When reading one, the token's own " +
                     "enc header decides, and the key length has to match it.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                label = "Text Hub AES-GCM payload written with a raw key",
+                recognise = { text -> RawKeyGcm.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to version byte 0x05 and records an AES key length.",
+                structural = true,
+                paramsFor = { text ->
+                    RawKeyGcm.keyLengthOf(text)?.let { mapOf("keySize" to (it * 8).toString()) } ?: emptyMap()
+                },
+            ),
+            DetectionHint(
+                labelFor = { text -> jweLabelFor(text) ?: "JWE compact token (alg=dir)" },
+                recognise = { text -> JweFormat.header(text)?.alg == "dir" },
+                evidenceFor = { text ->
+                    val header = JweFormat.header(text)
+                    "Five dot-separated Base64URL parts whose protected header names " +
+                        "alg=${header?.alg} and enc=${header?.enc}. The content key is not wrapped, so " +
+                        "the key you paste is the key itself."
+                },
+                structural = true,
+                paramsFor = { text ->
+                    val header = JweFormat.header(text)
+                    buildMap {
+                        put("format", "jwe")
+                        header?.enc?.let { put("jweEnc", it) }
+                    }
+                },
             ),
         ),
         info = ToolInfo(
@@ -260,6 +306,44 @@ class RsaProcessor : TextProcessor {
                 helper = "A JWE token names its own algorithm in the header (alg=RSA-OAEP or " +
                     "RSA-OAEP-256), so a token encrypted for your key opens here. Text Hub payloads " +
                     "start with a version byte.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                labelFor = { text -> pemLabelFor(text) },
+                recognise = { text -> RsaPem.inspect(text).let { it.hasPublic || it.hasPrivate } },
+                evidence = "The text contains a complete PEM block, which is key material rather than " +
+                    "ciphertext.",
+                structural = true,
+                runnable = false,
+                unrunnableNote = "That is key material, not data to decode. Paste it into " +
+                    "RSA-OAEP + AES-GCM's Key field together with the ciphertext you want to open.",
+            ),
+            DetectionHint(
+                label = "Text Hub RSA-OAEP + AES-GCM payload",
+                recognise = { text -> RsaHybrid.looksLikeEnvelope(text) },
+                evidence = "The Base64 decodes to version byte 0x11, an RSA-wrapped AES key and a GCM block.",
+                structural = true,
+            ),
+            DetectionHint(
+                labelFor = { text -> jweLabelFor(text) ?: "JWE compact token (RSA-OAEP)" },
+                recognise = { text ->
+                    JweFormat.header(text)?.alg?.let { it == "RSA-OAEP" || it == "RSA-OAEP-256" } == true
+                },
+                evidenceFor = { text ->
+                    val header = JweFormat.header(text)
+                    "Five dot-separated Base64URL parts whose protected header names " +
+                        "alg=${header?.alg} and enc=${header?.enc}. The content key is wrapped with RSA, " +
+                        "so the matching private key opens it."
+                },
+                structural = true,
+                paramsFor = { text ->
+                    val header = JweFormat.header(text)
+                    buildMap {
+                        put("format", "jwe")
+                        header?.enc?.let { put("jweEnc", it) }
+                    }
+                },
             ),
         ),
         info = ToolInfo(

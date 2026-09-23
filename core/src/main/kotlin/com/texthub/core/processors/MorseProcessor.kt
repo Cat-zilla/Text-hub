@@ -9,6 +9,7 @@ import com.texthub.core.model.ParamSpec
 import com.texthub.core.model.ToolCategory
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
+import com.texthub.core.model.DetectionHint
 
 /** International Morse code (ITU-R M.1677-1). Letters separated by spaces, words by "/". */
 class MorseProcessor : TextProcessor {
@@ -28,6 +29,15 @@ class MorseProcessor : TextProcessor {
                 kind = ParamKind.TEXT,
                 defaultValue = "/",
                 helper = "Used between words when encoding.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = ".-/",
+                minLength = 3,
+                label = "Morse code",
+                recognise = { text -> text.contains('-') && text.contains('.') },
+                evidence = "Only dots, dashes and word separators are present, and they parse as Morse.",
             ),
         ),
         info = ToolInfo(

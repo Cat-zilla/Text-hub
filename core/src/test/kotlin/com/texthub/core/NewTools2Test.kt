@@ -589,6 +589,8 @@ class NewTools2Test {
         val excluded = setOf(
             "bacon", "hill", "bifid", "polybius", "case", "linetools", "leet", "nato",
             "caesarbrute", "hash", "hmac", "pbkdf2", "checksum", "textstats",
+            // One-way detection dispatcher, no reverse direction to round-trip.
+            "universal",
             // Letters-only ciphers (punctuation is dropped by design) and the regex tester.
             "hill3", "trifid", "adfgx", "regex",
             // Generates fresh key material on every run.

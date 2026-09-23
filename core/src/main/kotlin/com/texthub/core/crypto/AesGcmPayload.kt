@@ -33,7 +33,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 object AesGcmPayload {
 
-    private const val VERSION: Byte = 0x01
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x01
     /** Legacy: PBKDF2-HMAC-SHA256, 210 000 iterations, key length not recorded in the payload. */
     private const val KDF_PBKDF2_HMAC_SHA256: Byte = 0x01
 
@@ -59,6 +60,22 @@ object AesGcmPayload {
      *   historical layout can pass false; those payloads keep KDF id `0x01` and are decrypted by
      *   detecting the size from the tag.
      */
+    /**
+     * Structural check used by the Universal Decoder: the version byte, a known KDF id and the
+     * documented minimum length of this layout. Being structurally plausible is **not** proof of
+     * authenticity - only [decrypt] can decide that, and it needs the password.
+     */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean {
+        val bytes = try {
+            Base64Codec.decode(payloadBase64.trim())
+        } catch (e: Exception) {
+            return false
+        }
+        if (bytes.size < PREFIX_LEN + 16) return false
+        if (bytes[0] != VERSION) return false
+        return bytes[1] == KDF_PBKDF2_HMAC_SHA256 || bytes[1] == KDF_PBKDF2_HMAC_SHA256_AES256
+    }
+
     fun encrypt(
         plaintext: String,
         password: CharArray,

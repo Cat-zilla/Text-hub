@@ -17,6 +17,9 @@ import com.texthub.core.model.ToolException
 import com.texthub.core.model.ToolInfo
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.toHex
+import com.texthub.core.crypto.digestAlgorithmOf
+import com.texthub.core.crypto.digestBitsOf
+import com.texthub.core.model.DetectionHint
 
 /**
  * Cryptographic hashes. Hashing is one-way - it cannot be undone, and it is not encryption.
@@ -61,6 +64,26 @@ class HashProcessor : TextProcessor {
                 defaultValue = "",
                 hint = "Used by Verify",
                 helper = "Verify hashes this text and compares it with the fingerprint in the input box.",
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789abcdefABCDEF",
+                minLength = 32,
+                labelFor = { text -> digestAlgorithmOf(text.trim()) ?: "Digest" },
+                recognise = { text -> digestAlgorithmOf(text.trim()) != null },
+                evidenceFor = { text ->
+                    val compact = text.trim()
+                    val algorithm = digestAlgorithmOf(compact) ?: "digest"
+                    "${compact.length} hexadecimal characters match the typical $algorithm " +
+                        "representation (${digestBitsOf(algorithm)} bits). Length alone cannot prove " +
+                        "which digest it is."
+                },
+                hashAlgorithmFor = { text -> digestAlgorithmOf(text.trim()) },
+                runnable = false,
+                unrunnableNote = "A digest is one-way: it cannot be decrypted. Type the text you want " +
+                    "to check against it in \"Text to compare (hash)\" and the matching digest is " +
+                    "computed instead.",
             ),
         ),
         info = ToolInfo(

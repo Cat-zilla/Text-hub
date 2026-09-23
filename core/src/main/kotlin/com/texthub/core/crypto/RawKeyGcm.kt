@@ -27,7 +27,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 object RawKeyGcm {
 
-    private const val VERSION: Byte = 0x05
+    /** Envelope version. Public so the Universal Decoder can identify the format structurally. */
+    const val VERSION: Byte = 0x05
     private const val IV_LEN = 12
     private const val TAG_BITS = 128
     private const val HEADER_LEN = 2
@@ -109,6 +110,9 @@ object RawKeyGcm {
             throw Errors.aes()
         }
     }
+
+    /** Structural check: version byte, a recorded key length and the documented minimum length. */
+    fun looksLikeEnvelope(payloadBase64: String): Boolean = keyLengthOf(payloadBase64) != null
 
     /** Key size in bytes that a payload announces, or null when it is not a raw-key payload. */
     fun keyLengthOf(payloadBase64: String): Int? {

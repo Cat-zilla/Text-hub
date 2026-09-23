@@ -13,6 +13,7 @@ import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.toBinary
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.model.DetectionHint
 
 class BinaryProcessor : TextProcessor {
 
@@ -34,6 +35,19 @@ class BinaryProcessor : TextProcessor {
                     Choice("space", "8-bit groups (space)"),
                     Choice("continuous", "Continuous"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "01",
+                minLength = 8,
+                label = "Binary (8-bit groups)",
+                recognise = { text ->
+                    val digits = text.count { it == '0' || it == '1' }
+                    digits >= 8 && digits % 8 == 0
+                },
+                evidence = "Only 0 and 1 are present and they group into whole bytes.",
+                strongWhen = { true },
             ),
         ),
         info = ToolInfo(

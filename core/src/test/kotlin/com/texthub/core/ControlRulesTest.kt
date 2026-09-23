@@ -1,5 +1,6 @@
 package com.texthub.core
 
+import com.texthub.core.model.Classification
 import com.texthub.core.model.ParamKind
 import com.texthub.core.model.ToolCategory
 import org.junit.Assert.assertEquals
@@ -15,7 +16,7 @@ import org.junit.Test
  * no direction switch for a tool that only has one direction or the same one both ways, common
  * settings in view and the rest under "Additional encryption settings", and a Reset that restores
  * the documented default. All of those rules are data on [com.texthub.core.model.ToolMeta], so
- * they are checked here for **all 73 tools** - a new tool that gets one of them wrong fails the
+ * they are checked here for **every registered tool** - a new tool that gets one of them wrong fails the
  * build instead of shipping a control that does nothing.
  */
 class ControlRulesTest {
@@ -142,15 +143,46 @@ class ControlRulesTest {
     @Test fun secretsAreAlwaysInViewAndNeverOptional() {
         val problems = mutableListOf<String>()
         tools.forEach { processor ->
-            processor.meta.params.filter { it.kind == ParamKind.PASSWORD }.forEach { spec ->
-                if (spec.advanced) problems += "${processor.meta.id}.${spec.key}: a secret under advanced settings"
-                if (!spec.required) problems += "${processor.meta.id}.${spec.key}: a secret that is optional"
+            val meta = processor.meta
+            // A tool that performs the encryption or the decryption itself cannot run without its
+            // secret: an optional password would be a tool that pretends it did the work. The
+            // single exception is a *dispatcher* (classification DETECTION), whose input decides
+            // whether a secret is needed at all - it asks for the one it needs instead of
+            // proceeding without it (see onlyADispatcherMayLeaveItsSecretOptional below).
+            val dispatcher = meta.classification == Classification.DETECTION
+            meta.params.filter { it.kind == ParamKind.PASSWORD }.forEach { spec ->
+                if (spec.advanced) problems += "${meta.id}.${spec.key}: a secret under advanced settings"
+                if (!spec.required && !dispatcher) problems += "${meta.id}.${spec.key}: a secret that is optional"
                 if (spec.defaultValue.isNotEmpty()) {
-                    problems += "${processor.meta.id}.${spec.key}: a secret with a default value"
+                    problems += "${meta.id}.${spec.key}: a secret with a default value"
                 }
             }
         }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
+    }
+
+    @Test fun onlyADispatcherMayLeaveItsSecretOptional() {
+        // The other half of the rule above: the optional-secret exemption is tied to the detection
+        // classification, so a second tool cannot quietly inherit it, and the tool that has it must
+        // say in its own information sheet when a secret is needed and that nothing is guessed.
+        val optional = tools.filter { processor ->
+            processor.meta.params.any { it.kind == ParamKind.PASSWORD && !it.required }
+        }
+        assertEquals("a secret may only be optional on a dispatcher", listOf("universal"), optional.map { it.meta.id })
+        optional.forEach { processor ->
+            val info = processor.meta.info
+            val text = (listOf(info.summary, info.convention ?: "") + info.useCases + info.warnings)
+                .joinToString(" ").lowercase()
+            assertTrue(
+                "${processor.meta.id} must explain when its secret is needed",
+                text.contains("password") || text.contains("secret") || text.contains("key"),
+            )
+            assertTrue(
+                "${processor.meta.id} must say that nothing is guessed",
+                text.contains("guess") || text.contains("brute"),
+            )
+            assertFalse("${processor.meta.id} must not claim to do cryptography", info.requiresKey)
+        }
     }
 
     @Test fun everyAdvancedSettingExplainsItself() {

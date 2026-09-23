@@ -13,6 +13,7 @@ import com.texthub.core.model.ToolMeta
 import com.texthub.core.util.toDecimal
 import com.texthub.core.util.utf8Bytes
 import com.texthub.core.util.utf8String
+import com.texthub.core.model.DetectionHint
 
 class DecimalProcessor : TextProcessor {
 
@@ -35,6 +36,19 @@ class DecimalProcessor : TextProcessor {
                     Choice("comma", "Comma"),
                     Choice("newline", "New line"),
                 ),
+            ),
+        ),
+        detection = listOf(
+            DetectionHint(
+                alphabet = "0123456789 ,;:|\t\n",
+                minLength = 6,
+                label = "Decimal character codes",
+                recognise = { text ->
+                    val tokens = text.split(Regex("[\\s,]+")).filter { it.isNotEmpty() }
+                    tokens.size >= 2 && tokens.all { token -> token.toIntOrNull()?.let { it in 32..126 } == true }
+                },
+                evidence = "Every value is a decimal number in the printable ASCII range, separated by " +
+                    "the characters shown.",
             ),
         ),
         info = ToolInfo(
