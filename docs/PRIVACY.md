@@ -18,6 +18,21 @@ Verified on both built APKs (`aapt dump permissions` reports only the
 auto-generated `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` that AndroidX adds for
 internal broadcast receivers — it is not a network or data permission).
 
+## The Universal Decoder (1.6.0)
+
+The analysis card that Text Hub shows for the Universal Decoder is derived from the text you pasted
+and lives in memory exactly as long as that text does. Nothing about it is written to disk:
+
+* the diagnosis (detected format, confidence, reason, chain of layers) exists only while the input
+  is on screen and is discarded when the input is cleared, the tool changes or the app closes;
+* the manual override is an ordinary, non-secret parameter (`prefer`) with the same lifetime as any
+  other remembered setting — clearing temporary data removes it;
+* a password or key typed into the decoder is handled like every other secret: never persisted,
+  never logged, never included in the report or in any step note (`UniversalDecoderTest` asserts
+  that no diagnosis text ever contains the supplied secret or the recovered plaintext);
+* no message, no input and no result is sent anywhere: the decoder dispatches to the tools that are
+  already on the device.
+
 ## Network code
 
 None. The project contains no `HttpURLConnection`, `URLConnection`, OkHttp, Retrofit, WebView or
@@ -45,6 +60,12 @@ nothing: there are no `android.util.Log`, `println` or `printStackTrace` calls i
 
 Not stored, ever: input text, output text, AES passwords, cipher keys, clipboard contents,
 history of processed text.
+
+Three values are deliberately **session-only**, so they are never written even to that file: a
+sensitive parameter of any tool (`ToolMeta.persistable` filters it), and the Universal Decoder's
+manual override, which is marked `sessionOnly` in its own metadata. Forcing a tool therefore applies
+to the analysis in front of you and is gone when the app is closed - a stale override can neither
+change a later result nor leave a record on the device.
 
 The filter is in `HubViewModel.persistParams()`: parameters whose `ParamSpec.sensitive` flag is
 `true` (all `key`/`password` fields) are removed before writing. A unit test enforces that every

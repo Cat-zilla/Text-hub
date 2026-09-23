@@ -10,6 +10,8 @@ import com.texthub.core.ProcessingEngine
 import com.texthub.core.TextProcessor
 import com.texthub.core.ToolRegistry
 import com.texthub.core.defaultParams
+import com.texthub.core.detector.Diagnosis
+import com.texthub.core.detector.UniversalDecoder
 import com.texthub.core.model.Direction
 import com.texthub.core.model.ParamIssue
 import com.texthub.core.model.ParamSpec
@@ -48,6 +50,12 @@ data class HubUiState(
     val processing: Boolean = false,
     val inputStats: TextStats = TextStats(0, 0, 0),
     val outputStats: TextStats = TextStats(0, 0, 0),
+    /**
+     * The structured result of the Universal Decoder (detected formats, confidence, the chain of
+     * layers and what is missing). Null for every other tool, which is also what the analysis card
+     * keys off. It is derived from the input in memory only - never stored.
+     */
+    val analysis: Diagnosis? = null,
 ) {
     val meta: ToolMeta get() = ToolRegistry.metaOf(toolId)
     val hasOutput: Boolean get() = output.isNotEmpty() || error != null
@@ -95,6 +103,16 @@ data class HubUiState(
 
     /** The inline message for one parameter, or null when it is fine. */
     fun issueFor(key: String): String? = paramIssues.firstOrNull { it.key == key }?.message
+
+    /** True for the Universal Decoder, the one tool that shows an analysis card. */
+    val isUniversalDecoder: Boolean get() = toolId == UniversalDecoder.TOOL_ID
+
+    /** The tool the user forced by hand, or null while detection decides. */
+    val forcedToolId: String?
+        get() = params[UniversalDecoder.PARAM_PREFER]?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** True when there is a decoded result to analyse once more. */
+    val canAnalyseAgain: Boolean get() = isUniversalDecoder && output.isNotEmpty() && error == null
 }
 
 /**
@@ -159,7 +177,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         val stored = prefs.paramsFor(toolId)
         val saved = stored.filter { (key, value) ->
             val spec = processor.meta.params.firstOrNull { it.key == key }
-            spec != null && !spec.sensitive && value.isNotEmpty() &&
+            spec != null && !spec.sensitive && !spec.sessionOnly && value.isNotEmpty() &&
                 processor.meta.validateParams(mapOf(key to value)).none { it.key == key }
         }
         val merged = defaults + saved
@@ -170,6 +188,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 output = "",
                 error = null,
                 outputStats = TextStats(0, 0, 0),
+                analysis = null,
                 direction = Direction.ENCODE,
             ).withValidatedParams()
         }
@@ -195,10 +214,15 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(favorites = next) }
     }
 
-    /** Drag-and-drop reorder of the favourites list; the new order is stored immediately. */
-    fun moveFavorite(from: Int, to: Int) {
-        if (from == to) return
-        val next = prefs.moveFavorite(from, to)
+    /**
+     * Completes a drag-and-drop reorder of the favourites list; the new order is stored immediately
+     * and is exactly the order the picker is showing afterwards.
+     *
+     * @param draggedId the row that was dragged, [anchorId] the row it is dropped in front of
+     *   (null = the end of the list).
+     */
+    fun moveFavorite(draggedId: String, anchorId: String?) {
+        val next = prefs.moveFavoriteBefore(draggedId, anchorId)
         _uiState.update { it.copy(favorites = next) }
     }
 
@@ -241,8 +265,11 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persistParams() {
         val state = _uiState.value
-        val sensitive = state.meta.params.filter { it.sensitive }.map { it.key }.toSet()
-        prefs.saveParams(state.toolId, state.params.filterKeys { it !in sensitive })
+        // What may be remembered is a property of the parameter, declared with the rest of the tool's
+        // metadata: a secret is never written, and neither is a value that only belongs to this
+        // session (the Universal Decoder's manual override, which would otherwise force the same tool
+        // on every analysis - and on every later launch).
+        prefs.saveParams(state.toolId, state.meta.rememberedParams(state.params))
     }
 
     fun swap() {
@@ -254,7 +281,17 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearInput() {
-        _uiState.update { it.copy(input = "", inputStats = TextStats(0, 0, 0), output = "", error = null, outputStats = TextStats(0, 0, 0)) }
+        _uiState.update {
+            it.copy(
+                input = "",
+                inputStats = TextStats(0, 0, 0),
+                output = "",
+                error = null,
+                outputStats = TextStats(0, 0, 0),
+                // Nothing is left to describe once the input is gone.
+                analysis = null,
+            )
+        }
     }
 
     fun clearOutput() {
@@ -288,6 +325,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                     error = null,
                     inputStats = TextStats(0, 0, 0),
                     outputStats = TextStats(0, 0, 0),
+                    analysis = null,
                     processing = false,
                 )
             }
@@ -301,7 +339,16 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         // result, which used to be measured on the main thread after the work came back.
         val outcome = withContext(Dispatchers.Default) {
             val result = ProcessingEngine.run(processor, input, params, direction)
-            result to computeStats(result.output)
+            // The Universal Decoder reports what it found as text; the same analysis is kept in a
+            // structured form here so the card can show the confidence, the reason and the chain.
+            // Both come from one call, so the card can never describe something else than the
+            // result next to it.
+            val analysis = if (processor.meta.id == UniversalDecoder.TOOL_ID) {
+                runCatching { UniversalDecoder.analyze(input, params) }.getOrNull()
+            } else {
+                null
+            }
+            Triple(result, computeStats(result.output), analysis)
         }
 
         _uiState.update {
@@ -309,9 +356,31 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 output = outcome.first.output,
                 error = outcome.first.error,
                 outputStats = outcome.second,
+                analysis = outcome.third,
                 processing = false,
             )
         }
+    }
+
+    /**
+     * Analyses the current result as if it had just been pasted: the decoded text becomes the input
+     * and is analysed again. Nothing is decrypted a second time behind the user's back - this is the
+     * "analyse the result again" step of a nested payload.
+     */
+    fun analyseResultAgain() {
+        val state = _uiState.value
+        if (!state.canAnalyseAgain) return
+        val nextInput = state.output
+        _uiState.update {
+            it.copy(
+                input = nextInput,
+                inputStats = computeStats(nextInput),
+                output = "",
+                outputStats = TextStats(0, 0, 0),
+                error = null,
+            )
+        }
+        process(immediate = true)
     }
 
     // ------------------------------------------------------------------------ settings
@@ -350,6 +419,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 recents = emptyList(),
                 params = ToolRegistry.get(it.toolId).defaultParams(),
+                analysis = null,
                 temporaryDataSize = prefs.temporaryDataSize(),
             ).withValidatedParams()
         }

@@ -1,5 +1,6 @@
 package com.texthub.app.ui
 
+import com.texthub.core.prefs.moveFavoriteInDisplayedOrder
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -63,3 +64,106 @@ internal fun autoScrollDelta(
         else -> 0f
     }
 }
+
+/**
+ * How much of a frame's automatic scroll to apply, given how long that frame actually took.
+ *
+ * [autoScrollDelta] is expressed per 60 Hz frame, which is what the arithmetic is easy to reason
+ * about in - but a 120 Hz screen would then scroll twice as fast as a 60 Hz one, and a slow frame
+ * would scroll too little. Scaling by the real frame time makes the list move at the same speed on
+ * every device. A frame that took far too long (a stall while the list is being rebuilt) is capped,
+ * so the row cannot shoot away from the finger when the app catches up.
+ *
+ * @param stepPerFramePx the scroll for a 60 Hz frame, from [autoScrollDelta].
+ * @param frameSeconds how long the frame that is about to be drawn took.
+ * @return the scroll to apply now, in pixels.
+ */
+internal fun autoScrollForFrame(stepPerFramePx: Float, frameSeconds: Float): Float {
+    if (!stepPerFramePx.isFinite() || !frameSeconds.isFinite() || frameSeconds <= 0f) return 0f
+    val frames = (frameSeconds * 60f).coerceIn(0f, MAX_FRAMES_PER_STEP)
+    return stepPerFramePx * frames
+}
+
+/** The longest catch-up allowed after a stalled frame: four 60 Hz frames' worth. */
+private const val MAX_FRAMES_PER_STEP = 4f
+
+/**
+ * One resolved drop.
+ *
+ * @property targetIndex the position the row lands on, counted in the list as displayed.
+ * @property anchorId the id of the row the dragged one has to end up in front of (null = the end).
+ * @property storedOrder the favourites order that must be written for this drop.
+ */
+internal data class DragDrop(
+    val targetIndex: Int,
+    val anchorId: String?,
+    val storedOrder: List<String>,
+)
+
+/**
+ * Resolves a released drag into both halves of the same answer: where the row sits on screen and
+ * what the stored favourites order becomes.
+ *
+ * Both come from this one function, which is what makes "the position the user released on" and
+ * "the stored order" impossible to disagree about - the earlier version computed the highlight
+ * from one index and the move from another (screen positions against stored ones), and the row
+ * could end up somewhere other than where it was dropped.
+ *
+ * @param stored the favourites order as it is stored.
+ * @param displayed the ids as they are displayed, in the same relative order as [stored].
+ * @param draggedId the row being dragged.
+ * @param dragOffsetPx how far it has travelled from its starting slot (positive = down).
+ * @param stepPx distance from one row's top to the next row's top (height + gap).
+ */
+internal fun resolveDragDrop(
+    stored: List<String>,
+    displayed: List<String>,
+    draggedId: String,
+    dragOffsetPx: Float,
+    stepPx: Float,
+): DragDrop? {
+    val startIndex = displayed.indexOf(draggedId)
+    if (startIndex < 0) return null
+    val targetIndex = dropTargetIndex(startIndex, dragOffsetPx, stepPx, displayed.lastIndex)
+    if (targetIndex < 0) return null
+    // The row the dragged one is released in front of, counted in the displayed list *without* the
+    // dragged row: that is the row that will follow it, and it is the same row in the stored list.
+    val rest = displayed.toMutableList().also { it.removeAt(startIndex) }
+    val anchorId = rest.getOrNull(targetIndex)
+    return DragDrop(
+        targetIndex = targetIndex,
+        anchorId = anchorId,
+        storedOrder = moveFavoriteInDisplayedOrder(stored, displayed, draggedId, anchorId),
+    )
+}
+
+/**
+ * How far each row moves aside to open the gap the dragged row is dropped into, in rows.
+ *
+ * Every row between the dragged one and its target shifts by exactly one row (never two, never
+ * half): the gap is one row tall wherever it opens, so the list never over- or under-shoots. The
+ * dragged row is not shifted here - it follows the finger instead.
+ */
+internal fun shiftRows(size: Int, startIndex: Int, targetIndex: Int): List<Int> {
+    if (size <= 0) return emptyList()
+    if (startIndex !in 0 until size || targetIndex !in 0 until size || startIndex == targetIndex) {
+        return List(size) { 0 }
+    }
+    return List(size) { index ->
+        when {
+            index == startIndex -> 0
+            startIndex < targetIndex && index in (startIndex + 1)..targetIndex -> -1
+            targetIndex < startIndex && index in targetIndex until startIndex -> 1
+            else -> 0
+        }
+    }
+}
+
+/**
+ * Where the dragged row itself is drawn: exactly under the finger while it is held, and once it is
+ * released, the leftover fraction between its final slot and the release point, which is animated
+ * away. That is what makes the row settle into the real persisted position instead of leaving a
+ * permanent offset or snapping back the whole way in one frame.
+ */
+internal fun settleOffsetPx(dragOffsetPx: Float, rowsMoved: Int, stepPx: Float): Float =
+    dragOffsetPx - rowsMoved * stepPx

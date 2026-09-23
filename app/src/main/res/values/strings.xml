@@ -111,4 +111,30 @@
     <string name="settings_licenses">Open-source licences</string>
     <string name="settings_licenses_sub">AndroidX, Jetpack Compose, Kotlin</string>
     <string name="msg_data_cleared">Temporary data cleared</string>
+
+    <!-- Universal Decoder: the analysis card -->
+    <string name="analysis_title">Analysis</string>
+    <string name="analysis_detected_automatically">Detected automatically: %1$s</string>
+    <string name="analysis_detected_nothing">Nothing recognised automatically</string>
+    <string name="analysis_forced">Using: %1$s</string>
+    <string name="analysis_clear_override">Let Text Hub decide again</string>
+    <string name="analysis_confidence_high">High confidence</string>
+    <string name="analysis_confidence_likely">Likely</string>
+    <string name="analysis_confidence_possible">Possible</string>
+    <string name="analysis_chain">Layers applied</string>
+    <string name="analysis_candidates">Other formats that fit</string>
+    <string name="analysis_analyse_again">Analyse result again</string>
+    <string name="cd_analysis_override">Choose the format by hand</string>
+    <string name="analysis_result_decoded">Decoded with %1$s.</string>
+    <string name="analysis_result_decoded_plain">Decoded.</string>
+    <string name="analysis_result_needs_secret">Recognised, and it is encrypted. Enter the %1$s to open it.</string>
+    <string name="analysis_result_choose">Several formats fit what you pasted.</string>
+    <string name="analysis_result_hash">This is a one-way digest: it can be compared with a text, never decrypted.</string>
+    <string name="analysis_result_not_supported">Recognised, but this format cannot be processed here.</string>
+    <string name="analysis_result_failed">The format was recognised, but it did not open.</string>
+    <string name="analysis_result_unrecognized">No supported format was recognised.</string>
+    <string name="analysis_secret_password">password</string>
+    <string name="analysis_secret_key">key</string>
+    <string name="analysis_secret_private_key">private key</string>
+    <string name="analysis_secret_any">key or password</string>
 </resources>

@@ -1,5 +1,9 @@
 package com.texthub.app.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -38,6 +42,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,7 +90,7 @@ fun ToolPickerSheet(
     recents: List<String>,
     onSelect: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
-    onMoveFavorite: (Int, Int) -> Unit,
+    onMoveFavorite: (String, String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -246,10 +251,12 @@ fun ToolPickerSheet(
                 FavoritesToolList(
                     metas = tools,
                     currentToolId = currentToolId,
-                    // Reordering is only offered on the plain favourites list: while a search is
-                    // active the rows shown are a subset, and dropping one would move the wrong
-                    // entry in the stored order.
+                    // Reordering is only offered on the plain favourites list. While a search is
+                    // active the rows shown are a subset, and a drag would be a guess at where the
+                    // hidden rows belong. The move itself is stored by id, so even the favourites
+                    // list, which can skip entries, is mapped back to the stored order exactly.
                     reorderable = query.isBlank(),
+                    favorites = favorites,
                     onSelect = onSelect,
                     onToggleFavorite = onToggleFavorite,
                     onMove = onMoveFavorite,
@@ -301,26 +308,27 @@ fun ToolPickerSheet(
 /**
  * The favourites list with long-press drag-and-drop reordering.
  *
- * The favourites list, and only the favourites list, can be reordered.
+ * The favourites list, and only the favourites list, can be reordered. How one drag works:
  *
- * How the gesture works, and why it no longer wobbles:
+ *  * long-pressing a row lifts it - drawn raised, above the others - and from then on it follows the
+ *    finger exactly (`translationY = dragOffset`), with a haptic tick to confirm the lift;
+ *  * the list order does **not** change while the gesture runs. The rows between the dragged row and
+ *    its target slide one row aside - animated, exactly one row each - to open the gap it will be
+ *    dropped into. Nothing is scaled, nothing moves twice, and no row keeps an offset afterwards;
+ *  * the gap and the stored order come from the same [resolveDragDrop] call, so the row is dropped
+ *    exactly where the user saw the gap open;
+ *  * releasing writes the new order once ([onMove]) and then animates the small leftover distance
+ *    between the release point and the final slot down to zero: the row *settles* into the position
+ *    that was just persisted, instead of snapping there or keeping a permanent offset;
+ *  * a cancelled drag only clears the state - the stored order is untouched;
+ *  * near the top or the bottom edge the list scrolls under the finger, and the visual offset is
+ *    corrected by exactly the amount that was scrolled.
  *
- *  * long-pressing a row lifts it - it is drawn raised, slightly enlarged and above the others - and
- *    it then follows the finger exactly, with a haptic tick to confirm the lift;
- *  * **the list order does not change while the drag is in progress**. The previous version moved
- *    the row one slot at a time with a placement animation running at the same time as the visual
- *    translation, and it advanced the slot as soon as half a row had been covered. The animation and
- *    the translation fought each other and the half-row threshold flipped between two slots from
- *    one frame to the next, which is what made the row jump up and down;
- *  * the slot the row would land on is shown instead, as a highlighted row that the floating row
- *    moves over;
- *  * near the top or the bottom edge the list follows the finger, a controlled number of pixels per
- *    frame, and the visual offset is corrected by exactly the amount scrolled;
- *  * releasing the finger commits the move once ([onMove]), so the stored order is written a single
- *    time per drag rather than on every frame.
- *
- * Row height is measured from the real rows, and the step used for the arithmetic is that height
- * plus the gap between rows - the missing gap was the second reason the old threshold wobbled.
+ * The move is stored by **id** (the dragged row, and the row it is dropped in front of), never by
+ * counting screen positions: the favourites list on screen can be a subsequence of the stored one
+ * (a favourite whose tool no longer exists is skipped), and positions would then move the wrong
+ * entry. Row height is measured from the real rows while nothing is lifted, and the step used for
+ * the arithmetic is that height plus the gap between rows.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -328,15 +336,19 @@ private fun FavoritesToolList(
     metas: List<ToolMeta>,
     currentToolId: String,
     reorderable: Boolean,
+    favorites: List<String>,
     onSelect: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
-    onMove: (Int, Int) -> Unit,
+    onMove: (String, String?) -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    val currentMetas by rememberUpdatedState(metas)
+
+    val displayedIds = metas.map { it.id }
+    val currentIds by rememberUpdatedState(displayedIds)
+    val currentFavorites by rememberUpdatedState(favorites)
     val currentOnMove by rememberUpdatedState(onMove)
 
     val gapPx = with(density) { Spacing.xs.toPx() }
@@ -347,32 +359,82 @@ private fun FavoritesToolList(
     var dragOffset by remember { mutableStateOf(0f) }
     var rowHeight by remember { mutableStateOf(0f) }
     var edgeScroll by remember { mutableStateOf(0f) }
+    // After the drop: the row that was just moved, and the distance left between the release point
+    // and the slot that was stored. Animating that to zero is the "settle" step.
+    var settlingId by remember { mutableStateOf<String?>(null) }
+    var settleFrom by remember { mutableStateOf(0f) }
+    val settleAnimation = remember { Animatable(0f) }
 
     val stepPx = rowHeight + gapPx
-    val startIndex = draggingId?.let { id -> currentMetas.indexOfFirst { it.id == id } } ?: -1
-    val targetIndex = if (startIndex >= 0) {
-        dropTargetIndex(startIndex, dragOffset, stepPx, currentMetas.lastIndex)
-    } else {
-        -1
+    val dragged = draggingId
+    val startIndex = if (dragged == null) -1 else displayedIds.indexOf(dragged)
+
+    // The offset changes on every pointer event, but the *gap* only changes when the target slot
+    // does. Keeping the resolution behind derivedStateOf means the rows are recomposed when they
+    // really move - not sixty times a second while nothing changes - which is what keeps the drag
+    // even on long lists. Inside the row, the offset itself is read in the graphics layer, so
+    // following the finger costs a redraw rather than a recomposition.
+    val shifts by remember {
+        derivedStateOf {
+            val moving = draggingId
+            if (moving == null) {
+                List(displayedIds.size) { 0 }
+            } else {
+                val from = displayedIds.indexOf(moving)
+                if (from < 0 || stepPx <= 0f) {
+                    List(displayedIds.size) { 0 }
+                } else {
+                    val to = resolveDragDrop(
+                        stored = currentFavorites,
+                        displayed = displayedIds,
+                        draggedId = moving,
+                        dragOffsetPx = dragOffset,
+                        stepPx = stepPx,
+                    )?.targetIndex ?: from
+                    shiftRows(displayedIds.size, from, to)
+                }
+            }
+        }
     }
 
     // Edge auto-scroll: the list keeps moving while the finger stays near an edge, and the visual
     // offset is adjusted by exactly the amount that was scrolled, so the row stays under the finger.
+    // The scroll amount is scaled by the real frame time, so a 120 Hz screen follows at the same
+    // speed as a 60 Hz one instead of twice as fast.
     LaunchedEffect(draggingId) {
+        var previousFrame = 0L
         while (draggingId != null) {
-            val step = edgeScroll
-            if (step != 0f) {
-                dragOffset += listState.scrollBy(step)
-            }
-            withFrameNanos { }
+            val frame = withFrameNanos { it }
+            val seconds = if (previousFrame == 0L) 0f else ((frame - previousFrame) / 1_000_000_000.0).toFloat()
+            previousFrame = frame
+            // autoScrollDelta is expressed per 60 Hz frame; a frame's worth of movement is that
+            // value scaled by how long the frame actually took, so the list follows at the same
+            // speed on a 60 Hz and a 120 Hz screen.
+            val step = autoScrollForFrame(edgeScroll, seconds)
+            if (step != 0f) dragOffset += listState.scrollBy(step)
         }
     }
 
-    // A favourite that disappeared (star tapped during a drag) must not leave a floating row behind.
+    // The settle step: snap to the leftover distance, animate it away, then forget the row.
+    LaunchedEffect(settlingId, settleFrom) {
+        if (settlingId != null) {
+            settleAnimation.snapTo(settleFrom)
+            settleAnimation.animateTo(0f, tween(durationMillis = 160, easing = LinearOutSlowInEasing))
+            settlingId = null
+            settleFrom = 0f
+        }
+    }
+
+    // A favourite that disappeared (star tapped during a drag, or the tool list changed under us)
+    // must not leave a floating row behind.
     if (draggingId != null && startIndex < 0) {
         draggingId = null
         dragOffset = 0f
         edgeScroll = 0f
+    }
+    if (settlingId != null && settlingId !in displayedIds) {
+        settlingId = null
+        settleFrom = 0f
     }
 
     LazyColumn(
@@ -383,30 +445,44 @@ private fun FavoritesToolList(
     ) {
         itemsIndexed(items = metas, key = { _, meta -> meta.id }, contentType = { _, _ -> "tool" }) { index, meta ->
             val dragging = meta.id == draggingId
-            val isDropSlot = !dragging && index == targetIndex && targetIndex != startIndex
+            val settling = meta.id == settlingId
+            val moving = dragging || settling
+            // Rows move aside by exactly one row each, and only while a drag is running. The change
+            // is animated so the list eases into its new shape instead of jumping.
+            val shiftTarget = if (moving || draggingId == null) 0f else (shifts.getOrElse(index) { 0 }).toFloat() * stepPx
+            val shift by animateFloatAsState(
+                targetValue = if (draggingId != null) shiftTarget else 0f,
+                animationSpec = tween(durationMillis = 140),
+                label = "favouritesRowShift",
+            )
             Surface(
-                color = when {
-                    dragging -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                    isDropSlot -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    else -> Color.Transparent
+                color = if (moving) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                } else {
+                    Color.Transparent
                 },
-                shadowElevation = if (dragging) 8.dp else 0.dp,
+                shadowElevation = if (moving) 8.dp else 0.dp,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (dragging) Modifier else Modifier.animateItemPlacement())
-                    .zIndex(if (dragging) 1f else 0f)
+                    .zIndex(if (moving) 1f else 0f)
                     .graphicsLayer {
-                        if (dragging) {
-                            translationY = dragOffset
-                            scaleX = 1.02f
-                            scaleY = 1.02f
+                        translationY = when {
+                            // Under the finger, one pixel per pixel.
+                            dragging -> dragOffset
+                            // Settling into the position that was just stored.
+                            settling -> settleAnimation.value
+                            // Sliding aside to open the gap (no offset at all once the drag is over:
+                            // the list itself has already taken the new order by then).
+                            draggingId != null -> shift
+                            else -> 0f
                         }
                     }
                     .onGloballyPositioned { coordinates ->
-                        // Rows are uniform; the measurement is taken while nothing is lifted, so a
-                        // translated row can never feed its own offset back into the arithmetic.
-                        if (draggingId == null) {
+                        // Rows are uniform, and the measurement is taken only while nothing is
+                        // lifted or settling, so a translated row can never feed its own offset
+                        // back into the arithmetic.
+                        if (draggingId == null && settlingId == null) {
                             val height = coordinates.size.height.toFloat()
                             if (height > 0f && height != rowHeight) rowHeight = height
                         }
@@ -415,7 +491,11 @@ private fun FavoritesToolList(
                         if (!reorderable) return@pointerInput
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
+                                // A new gesture always starts from a clean state, so two quick drags
+                                // in a row cannot inherit an offset from the previous one.
                                 draggingId = meta.id
+                                settlingId = null
+                                settleFrom = 0f
                                 dragOffset = 0f
                                 edgeScroll = 0f
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -423,7 +503,7 @@ private fun FavoritesToolList(
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount.y
-                                val from = currentMetas.indexOfFirst { it.id == meta.id }
+                                val from = currentIds.indexOf(meta.id)
                                 if (from < 0 || rowHeight <= 0f) {
                                     // Nothing to compute with: end the drag rather than guess.
                                     draggingId = null
@@ -443,16 +523,30 @@ private fun FavoritesToolList(
                             },
                             onDragEnd = {
                                 val id = draggingId
-                                if (id != null) {
-                                    val from = currentMetas.indexOfFirst { it.id == id }
-                                    val to = dropTargetIndex(from, dragOffset, stepPx, currentMetas.lastIndex)
-                                    if (from >= 0 && to >= 0 && to != from) currentOnMove(from, to)
+                                if (id != null && stepPx > 0f) {
+                                    val resolved = resolveDragDrop(
+                                        stored = currentFavorites,
+                                        displayed = currentIds,
+                                        draggedId = id,
+                                        dragOffsetPx = dragOffset,
+                                        stepPx = stepPx,
+                                    )
+                                    val from = currentIds.indexOf(id)
+                                    if (resolved != null && from >= 0) {
+                                        val rowsMoved = resolved.targetIndex - from
+                                        // The stored order and the position on screen come from the
+                                        // same resolution, so they cannot disagree.
+                                        if (rowsMoved != 0) currentOnMove(id, resolved.anchorId)
+                                        settleFrom = settleOffsetPx(dragOffset, rowsMoved, stepPx)
+                                        settlingId = id
+                                    }
                                 }
                                 draggingId = null
                                 dragOffset = 0f
                                 edgeScroll = 0f
                             },
                             onDragCancel = {
+                                // Cancelled: only the state is cleared, the order stays as it was.
                                 draggingId = null
                                 dragOffset = 0f
                                 edgeScroll = 0f

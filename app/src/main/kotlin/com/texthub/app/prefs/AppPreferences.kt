@@ -91,6 +91,18 @@ class AppPreferences(context: Context) {
         return next.favorites(registryOrder)
     }
 
+    /**
+     * Completes a drag: the row that was dragged is stored directly in front of [anchorId] (null =
+     * the end of the list). Ids are used rather than screen positions, so a favourite that is
+     * filtered out of the displayed list cannot shift the move onto the wrong entry.
+     */
+    fun moveFavoriteBefore(draggedId: String, anchorId: String?): List<String> {
+        val data = read()
+        val next = data.moveFavoriteBefore(draggedId, anchorId, registryOrder)
+        write(next)
+        return next.favorites(registryOrder)
+    }
+
     // ------------------------------------------------------------------ recents
 
     fun recents(): List<String> = read().recents()

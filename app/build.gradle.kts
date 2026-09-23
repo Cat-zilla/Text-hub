@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,19 +17,48 @@ android {
         applicationId = "com.texthub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.5.1"
+        versionCode = 10
+        versionName = "1.6.1"
         resourceConfigurations += setOf("en")
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Release signing
+    //
+    // **No password is written in this file, and none belongs in a source checkout.** The keystore
+    // of the published build is kept with the release, not with the source (see docs/SIGNING.md).
+    // When the material is available, the release variant is signed; when it is not - which is what
+    // a plain `git clone` looks like - the release variant is built unsigned instead of failing, so
+    // the source archive stays buildable for everybody.
+    //
+    // Provide the credentials with any one of:
+    //   * Gradle properties:  ./gradlew assembleRelease -PtexthubStorePassword=… -PtexthubKeyPassword=…
+    //   * the environment:    TEXTHUB_STORE_PASSWORD / TEXTHUB_KEY_PASSWORD
+    //   * a local file:       keystore.properties next to this file (kept out of Git and out of
+    //                         the published source archive)
+    val signingProperties = Properties().apply {
+        val file = rootProject.file("keystore.properties")
+        if (file.isFile) file.inputStream().use { load(it) }
+    }
+    fun signingValue(property: String, key: String, env: String): String? =
+        (providers.gradleProperty(property).orNull ?: signingProperties.getProperty(key) ?: System.getenv(env))
+            ?.takeIf { it.isNotBlank() }
+
+    val storeFilePath = signingValue("texthubStoreFile", "storeFile", "TEXTHUB_STORE_FILE") ?: "texthub-release.jks"
+    val storePasswordValue = signingValue("texthubStorePassword", "storePassword", "TEXTHUB_STORE_PASSWORD")
+    val keyAliasValue = signingValue("texthubKeyAlias", "keyAlias", "TEXTHUB_KEY_ALIAS") ?: "texthub"
+    val keyPasswordValue = signingValue("texthubKeyPassword", "keyPassword", "TEXTHUB_KEY_PASSWORD")
+    val signingReady = storePasswordValue != null && keyPasswordValue != null &&
+        rootProject.file(storeFilePath).isFile
+
     signingConfigs {
         create("release") {
-            // Demo release key that ships with the project so the APK can be built and
-            // installed locally. Replace it with your own keystore before publishing.
-            storeFile = file("../texthub-release.jks")
-            storePassword = "texthub"
-            keyAlias = "texthub"
-            keyPassword = "texthub"
+            if (signingReady) {
+                storeFile = rootProject.file(storeFilePath)
+                storePassword = storePasswordValue
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
+            }
         }
     }
 
@@ -39,7 +70,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            // Only set when the credentials were provided; otherwise the variant stays unsigned.
+            if (signingReady) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"

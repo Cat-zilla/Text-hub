@@ -269,7 +269,7 @@ and there is no third case:
 | Must be supplied | password, RSA/PEM private key, AAD (an authentication input, never stored) | Missing or wrong values fail authentication; AAD is never auto-filled |
 | Defines the transform | Base58 alphabet, Base85 variant, Bacon's variant, Scytale diameter, Baudot alphabet, A1Z26 separators, case/leet/regex mode | Cannot be recovered from the data by construction. The tool says so in its info sheet, and a result that is provably wrong for text (invalid UTF-8, out-of-range units) is refused |
 
-`ParamDisciplineAuditTest` enforces this for all 73 tools: encoding with the defaults and decoding
+`ParamDisciplineAuditTest` enforces this for all 74 tools: encoding with the defaults and decoding
 with one setting changed must return the original text or fail with a friendly sentence - a
 confidently wrong answer is a test failure. Tools where a changed setting legitimately changes the
 answer are listed explicitly in the test, with the reason, next to the warning the user sees.

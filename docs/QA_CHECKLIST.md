@@ -13,7 +13,7 @@ Gradle 8.2, Kotlin 1.9.22, AGP 8.1.4, Compose BOM 2023.10.01, minSdk 24, targetS
 | --- | --- | --- |
 | [x] | App builds (`assembleDebug`, `assembleRelease`) | `BUILD SUCCESSFUL`; no Kotlin errors or warnings in app code |
 | [x] | Release APK is signed | `apksigner verify` → *Verifies*, APK Signature Scheme v2, 1 signer |
-| [x] | APK produced | `apk/TextHub-1.4.1-release.apk` (9,522,280 B, signed, round 5), `apk/TextHub-1.4.1-debug.apk` (14,298,148 B) |
+| [x] | APK produced | `apk/TextHub-1.6.0-release.apk` (9,608,348 B, signed) and `apk/TextHub-1.6.0-debug.apk` (14,586,225 B); superseded builds are removed from `apk/` |
 | [x] | No unnecessary permissions | `aapt dump permissions` lists only AndroidX's internal receiver permission; `INTERNET` is removed in the manifest |
 | [x] | No WebView | `grep -rn WebView core/src app/src` → nothing |
 | [x] | No network code at all | no HTTP/OkHttp/Retrofit/socket usage anywhere |
@@ -189,3 +189,85 @@ Manual (an emulator is not available in this environment - see the build notes):
 | 3 | Drag it to the bottom edge and hold | The list scrolls slowly while the row stays under the finger |
 | 4 | Release | The row settles into the highlighted slot once, and the new order survives a restart |
 | 5 | Type something in the picker search while on Favourites | The drag handle disappears and rows cannot be dragged until the search is cleared |
+
+---
+
+## Round 10 - Universal Decoder, tool ordering, favourite drag, release split (1.6.0)
+
+Automated (`:core:test` 360 + `:app:testDebugUnitTest` 32 = **392 tests, 0 failures** at 1.6.0; **379 + 39 = 418** at 1.6.1):
+
+| Check | Test |
+| --- | --- |
+| The Universal Decoder is a normal registered tool and is first in every ordering | `UniversalDecoderTest.theUniversalDecoderIsANormalRegisteredTool`, `itIsFirstInEveryOrderingThatMatters` |
+| Its first position survives favouriting, reordering, un-favouriting and clearing temporary data | `UniversalDecoderTest.theFirstPositionSurvivesFavouritesAndTemporaryData` (also pins `ToolCategory.SMART.ordinal == 0`) |
+| It performs no cryptography of its own and dispatches to registered tools only | `UniversalDecoderTest.itNeverPerformsCryptographyOfItsOwn` |
+| Every deterministic format decodes through its own tool | `UniversalDecoderTest.everyDeterministicEncodingDecodesThroughItsOwnTool`, `base64IsRecognisedWithItsReason`, `base64UrlIsDistinguishedFromStandardBase64`, `hexadecimalIsDecodedAndDigestsAreNot`, `punycodeLabelsWithTheDnsPrefixAreDetectedAndDecoded` |
+| All Text Hub envelopes (AES-GCM, CBC+HMAC, ChaCha20, CTR+HMAC, raw key, RSA, OpenSSL, JWE) and the secret each one needs | `everyTextHubEnvelopeIsIdentifiedWithItsOwnTool`, `rawKeyAndRsaPayloadsAskForTheRightKindOfSecret`, `openSslFilesAreIdentifiedAndOpenedWithTheExistingTool`, `jweTokensAreIdentifiedAndOpened`, `keyMaterialIsRecognisedAsKeyMaterial` |
+| A wrong password, a truncated payload, a bad envelope, a wrong key size and an auth failure never produce output | `aWrongPasswordFailsLoudlyAndNeverReturnsGarbage`, `aTruncatedEnvelopeFailsInsteadOfReturningGarbage`, `malformedPayloadsFailWithAFriendlySentence`, `theKeySizeInThePayloadIsEnforcedNotAskedFor`, `parametersOfTheTargetToolAreStillEnforced` |
+| Digests are one-way and can only be compared | `aSha256ShapedValueIsACandidateAndNotACertainty`, `everyDigestLengthIsRecognisedAsOneWay`, `aHashCanBeCheckedAgainstCandidateTextButNeverDecrypted` |
+| Ambiguity is offered as candidates, never decoded as a guess | `severalCandidatesAreOfferedInsteadOfAGuess`, `unsupportedJweAlgorithmsAreNamedNotGuessed` |
+| Nested layers, depth limit, cycle protection, analyse-again | `nestedEncodingsAreUnwrappedInOrder`, `anEncryptedInnerLayerIsOpenedWhenTheSecretIsAvailable`, `nestingStopsAtTheDepthLimit`, `aSelfReferentialEncodingCannotLoopForever`, `analysingTheResultAgainUnwrapsTheNextLayer` |
+| The manual override forces the chosen tool, is refused inline when unknown, and never traps the user | `aManualOverrideForcesTheChosenToolInsteadOfTheDetectedOne`, `anUnknownOverrideIsRefusedInlineAndIgnoredByTheAnalysis` |
+| Empty, random, malformed and large inputs are safe; large input is analysed off the UI thread | `emptyAndUnrecognisableInputsAreExplainedNotGuessed`, `largeInputIsHandledWithoutBlowingUp` |
+| No secret, password or plaintext ever appears in a diagnosis or a report | `secretsNeverAppearInTheDiagnosisText` |
+| A drag stores exactly the position the user released on (A B C D E, every row to every position) | `DragReorderTest.everyRowOfFiveCanBeMovedToEveryOtherPosition`, `theDisplayedOrderAfterEveryDropIsTheStoredOrder` |
+| A drag on a filtered favourites list moves the row the user grabbed, never another | `DragReorderTest.aFilteredFavouritesListStillMovesTheRowTheUserGrabbed`, `aDragInsideAFilteredListNeverLosesAFavourite`, `PrefsModelTest.aDragIsStoredByIDSoFilteredFavouritesCannotShiftIt` |
+| Rows slide exactly one row aside; the row follows the finger and settles without a permanent offset | `DragReorderTest.theRowsBetweenTheDragAndTheTargetSlideOneRowAside`, `everyShiftedRowMovesExactlyOnceRegardlessOfTheDistance`, `theRowIsDrawnWhereTheFingerIsUntilItSettles`, `theLeftoverDistanceIsOnlyTheFractionInsideTheSlot` |
+| Rapid consecutive drags, cancelled drags, single-row lists and clamping | `twoQuickDragsInARowBothLand`, `aGestureThatIsNotADragChangesNothing`, `aDragOnAOneRowListDoesNothing`, `aReleasePastTheEndsIsClampedToTheList` |
+| The stored order is what a fresh read returns, and clearing temporary data keeps it | `PrefsModelTest.theSameDragThroughTheStoreKeepsFavouritesAndWritesTheOrder` |
+| The public archive has no signing material | `tools/make_release_archives.py` (name, suffix and content scan), run in this round |
+| Only a dispatcher may leave its secret optional | `ControlRulesTest.onlyADispatcherMayLeaveItsSecretOptional` |
+
+Manual (no emulator in this environment):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Launch the app | The tool list opens on **Universal Decoder**, top of the list, category *Smart Tools* |
+| 2 | Restart, search "base64", visit other categories, favourite a tool, clear temporary data | The Universal Decoder is still first and cannot be dragged in the main list |
+| 3 | Favourite the Universal Decoder, reorder it in Favourites | The favourites order changes; its main-list position does not |
+| 4 | Paste `SGVsbG8sIFdvcmxkIQ==` | Analysis card: "Decoded with Base64", High confidence, one layer, result `Hello, World!` |
+| 5 | Paste a 64-character hex value | Possible SHA-256, nothing decoded, candidates listed; typing the same text in *Text to compare* reports a match |
+| 6 | Encrypt "hello" with the AES-GCM tool, paste the payload into the decoder | "Recognised, and it is encrypted. Enter the password to open it" — the tool does not try anything |
+| 7 | Enter the wrong password, then the right one | "Decryption failed / Authentication check failed", then the plaintext |
+| 8 | Tap the *Detected automatically* row and pick AES-GCM by hand | The analysis uses the forced tool; the ✕ next to it returns to automatic detection |
+| 9 | Paste Base64 of Base64 of "hello", tap *Analyse result again* | The chain shows both layers; the second pass has nothing left to unwrap |
+| 10 | Drag a favourite through the whole list in one gesture, release at the very bottom | The row follows the finger, the rows in between slide aside, and the row settles exactly where it was released |
+| 11 | Drag and release, then immediately drag another row | The second drag starts clean: no leftover offset, no jump |
+| 12 | Cancel a drag (keep the finger still and lift after a scroll gesture) | The order is unchanged |
+| 13 | Search inside Favourites | The drag handle disappears; rows cannot be dragged until the search is cleared |
+
+---
+
+## Round 11 - detection matrix and the end of the "cipher settings" message (1.6.1)
+
+Automated (**379** `:core:test` + **39** `:app:testDebugUnitTest` = **418 tests, 0 failures**):
+
+| Check | Test |
+| --- | --- |
+| The exact reported bug is gone: an encoding is decoded, and nothing in that path can mention cipher settings | `UniversalDecoderDispatchTest.encodingThenAnalysingThenDecodingRoundTripsThroughTheRegisteredTool`, `aDecodedEncodingNeverMentionsCipherSettingsOrPasswords`, `noPathThroughTheDecoderEverReportsCipherSettingsAsTheProblem` |
+| An encoding candidate never requires a secret and never needs cipher parameters (derived from the registry, not from the detection rule) | `aDetectedEncodingNeverRequiresASecretAndNeverValidatesCipherSettings`, `anEncodingShapedInputIsNeverAskedForAPassword`, `everyCandidateTheDetectorOffersNamesARegisteredTool` |
+| Every deterministic format decodes through its own registered tool, driven through the production path (registered tool -> registry -> processing engine) | `everyDetectedEncodingDecodesThroughItsOwnRegisteredTool`, `UniversalDecoderTest.everyDeterministicEncodingDecodesThroughItsOwnTool` |
+| Every one of the 74 registered tools is accounted for by detection - hinted, generic, symmetric-transform, keyed or one-way - and a new deterministic tool cannot fall outside it | `everyRegisteredToolIsAccountedForByTheDetector`, `theMatrixCoversWhatTheDetectorClaimsToCover` |
+| A candidate can only ever name a registered tool (an unregistered id throws where it is built, not in the user's hands) | `aCandidateCanOnlyNameARegisteredTool` |
+| The dispatcher itself is never a candidate, so it cannot recurse | `theDetectorsOwnToolIsNeverOfferedAsACandidate` |
+| Every tool that needs key material declares a real, sensitive secret parameter | `everyToolThatTakesASecretDeclaresItAsAnActualParameter` |
+| The manual override dispatches to the chosen tool and never reports a cipher problem, whatever the input | `aManualOverrideDispatchesToThatToolAndNeverBlamesTheCipherSettings`, `anUnknownManualOverrideIsIgnoredInsteadOfBreakingTheAnalysis` |
+| The manual override is never written to disk, and neither is a secret or an empty value | `theManualOverrideIsNeverRememberedForTheNextSession` |
+| No registered tool answers an awkward parameter with an unexplained failure (parameter torture over every encoding, transformation and classical cipher) | `everyRegisteredToolTakesAwkwardParametersWithoutAnUnexplainedFailure` |
+| The decoder itself never fails with an unexpected error over the whole input corpus | `theDecoderItselfNeverFailsWithAnUnexpectedError` |
+| Favourites drag polish: same auto-scroll speed at 60 Hz and 120 Hz, capped catch-up after a stalled frame, no movement before 60% of a row, a fast drag landing under the finger, no flicker while hovering, and the offset absorbing exactly what was scrolled | `DragReorderTest.theAutoScrollMovesAtTheSameSpeedOnEveryFrameRate`, `aStalledFrameCannotShootTheListAwayFromTheFinger`, `aSlowDragDoesNotMoveAnythingUntilTheThresholdIsCrossed`, `aFastDragLandsOnTheRowTheFingerIsOver`, `hoveringOnTheBoundaryDoesNotFlicker`, `scrollingWhileDraggingKeepsTheRowUnderTheFinger` |
+| The favourites algorithm itself is untouched and still correct (every row to every position, filtered lists, cancellation, restart persistence) | the whole of `DragReorderTest` and `PrefsModelTest` |
+
+Manual (no emulator in this environment):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Paste `SGVsbG8gVGV4dEh1Yg==` into the Universal Decoder | It decodes to `Hello TextHub`. No mention of cipher settings, passwords or keys anywhere on the card |
+| 2 | Type anything into *Password / key* and analyse the same Base64 again | Identical result - a password cannot change a decoding |
+| 3 | Force **AES-GCM Encryption** with the *Detected automatically* row, then paste Base64 and analyse | The card asks for the password (or reports the AES error) - never "these cipher settings are not valid" for an encoding, and the forced tool is named |
+| 4 | Close and reopen the app, paste plain Base64 | The override did not survive: detection is automatic again |
+| 5 | Paste a 32-character hex value, then Base58 text, then Morse | Each is decoded by its own tool; the report names the tool and the reason |
+| 6 | Paste a SHA-256 digest | "Detected: one-way hash", candidates only, no decode, *Text to compare* checks it |
+| 7 | Paste random text | "No supported format recognised" - never a guess |
+| 8 | Drag a favourite quickly up and down, hold it at the bottom edge, then release | The row stays under the finger, the list scrolls at a steady speed, the rows slide aside once each, and the row settles where it was released with no flicker or permanent offset |
+| 9 | Drag on a 120 Hz device (if available) | The edge scroll moves at the same speed as on a 60 Hz device |

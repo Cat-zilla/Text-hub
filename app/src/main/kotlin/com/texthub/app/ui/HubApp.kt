@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import com.texthub.app.ui.theme.TextHubTheme
+import com.texthub.core.detector.UniversalDecoder
 import com.texthub.app.viewmodel.HubViewModel
 import kotlinx.coroutines.launch
 
@@ -40,11 +41,14 @@ fun HubApp(
     var screen by remember { mutableStateOf(Screen.MAIN) }
     var pickerVisible by remember { mutableStateOf(false) }
     var infoVisible by remember { mutableStateOf(false) }
+    // The Universal Decoder's manual override reuses the ordinary tool picker, in its own sheet.
+    var overridePickerVisible by remember { mutableStateOf(false) }
 
     // skipPartiallyExpanded = true: the sheet opens at full height, so the first drag inside the
     // tool list scrolls the list instead of half-expanding the sheet (that fight was the jitter).
     val pickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val infoState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val overridePickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     BackHandler(enabled = screen == Screen.SETTINGS) { screen = Screen.MAIN }
 
@@ -54,6 +58,10 @@ fun HubApp(
 
     fun dismissInfo() {
         scope.launch { infoState.hide() }.invokeOnCompletion { infoVisible = false }
+    }
+
+    fun dismissOverridePicker() {
+        scope.launch { overridePickerState.hide() }.invokeOnCompletion { overridePickerVisible = false }
     }
 
     fun copyOutput() {
@@ -107,6 +115,12 @@ fun HubApp(
                         onClearInput = viewModel::clearInput,
                         onClearOutput = viewModel::clearOutput,
                         onResetParams = viewModel::resetParams,
+                        onOpenOverridePicker = { overridePickerVisible = true },
+                        onClearOverride = { viewModel.setParam(UniversalDecoder.PARAM_PREFER, "") },
+                        onUseCandidate = { toolId ->
+                            viewModel.setParam(UniversalDecoder.PARAM_PREFER, toolId)
+                        },
+                        onAnalyseAgain = viewModel::analyseResultAgain,
                     )
                     Screen.SETTINGS -> SettingsScreen(
                         state = state,
@@ -142,6 +156,25 @@ fun HubApp(
                     onToggleFavorite = viewModel::toggleFavorite,
                     onMoveFavorite = viewModel::moveFavorite,
                     onDismiss = ::dismissPicker,
+                )
+            }
+
+            if (overridePickerVisible) {
+                LaunchedEffect(Unit) { overridePickerState.show() }
+                ToolPickerSheet(
+                    sheetState = overridePickerState,
+                    // Nothing is selected: this sheet chooses a *format* for the analysis, not the
+                    // tool the app is using, so no row is marked as current.
+                    currentToolId = "",
+                    favorites = state.favorites,
+                    recents = state.recents,
+                    onSelect = { toolId ->
+                        viewModel.setParam(UniversalDecoder.PARAM_PREFER, toolId)
+                        dismissOverridePicker()
+                    },
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onMoveFavorite = viewModel::moveFavorite,
+                    onDismiss = ::dismissOverridePicker,
                 )
             }
 

@@ -1,15 +1,17 @@
 # Tool reference
 
-Every one of the **73 methods** available in Text Hub, with its classification, key
+Every one of the **74 methods** available in Text Hub, with its classification, key
 requirement, parameters and a worked example. The app shows this information in the ⓘ sheet of each tool.
 
 Legend — **Class:** `ENC` encoding · `HIST` historical character encoding · `CLS` classical
 cipher · `OBF` obfuscation · `TRF` text transformation · `REV` reversible transformation ·
 `SEC` authenticated encryption · `HASH` cryptographic hash (one-way) · `MAC` message
-authentication code · `CKSUM` checksum (integrity only) · `KEYGEN` key material (not encryption).
+authentication code · `CKSUM` checksum (integrity only) · `KEYGEN` key material (not encryption) ·
+`DET` format detection and dispatch (no cryptography of its own).
 
 | Tool | Class | Key | Parameters |
 | --- | --- | --- | --- |
+| Universal Decoder | DET | Only when the payload is encrypted | Password / key (asked for only when the payload needs one); text to compare against a digest; maximum layers (1–8, default 4); manual override |
 | AES-GCM Encryption | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256); the size is recorded in the message and must match on decrypt |
 | AES-CBC + HMAC | SEC | Password | Key size (AES-128 / AES-192 / AES-256, default AES-256); recorded in the message, enforced on decrypt |
 | ChaCha20-Poly1305 | SEC | Password | – (Android 9+; 256-bit key) |
@@ -273,6 +275,56 @@ All of the values above were produced by the shipped implementation and are repr
   signature and says so in its output.
 * That formatting JSON, testing a regex, diffing two versions or counting words changes the
   meaning of your data — those tools report and reformat only.
+
+---
+
+## Universal Decoder (1.6.0)
+
+`Universal Decoder` is the tool that answers "what is this?", and it is always the first entry in the
+list. It **identifies and processes supported Text Hub formats where the format can be determined
+reliably**: structure is checked first (magic bytes, version ids, envelope layouts, PEM headers, JWE
+compact form, OpenSSL `Salted__`, block sizes), then the remaining character-set evidence is offered
+as a *list* of candidates with a reason each — never as a decode. Confidence is **High** only for
+structural evidence, **Likely** for strong format patterns and **Possible** for character sets and
+lengths, so "64 hexadecimal characters" is reported as a *possible* SHA-256 digest and is never
+treated as proof.
+
+It performs no cryptography of its own: every step is delegated to the registered tool for that
+format, so a payload the AES tool refuses is refused here in the same words. Detection is a matrix
+over the registry: every registered tool declares how its own input looks (or is probed generically
+by decoding and re-encoding), and every candidate is validated by running that tool. A deterministic
+encoding needs no key, no password and no cipher parameters - there is nothing in its tool to ask
+for. A secret is asked for
+only when the payload says it is encrypted, it is never tried, guessed or brute-forced, and the
+parameters recorded in the payload (key size, envelope version, OpenSSL KDF, JWE `alg`/`enc`,
+raw-key length) are enforced rather than asked about. An authentication failure is reported as
+"Decryption failed / Authentication check failed"; a digest is reported as one-way and can only be
+compared with a candidate text. Layers are unwrapped one at a time, listed as a chain, and limited
+in depth with cycle protection. A manual override ("Detected automatically: Base64 ▾") reuses the
+ordinary searchable tool picker and dispatches straight to the chosen tool; it applies to the
+analysis in front of you, is shown on the result card, and is **never written to disk**, so it can
+never trap the user on a wrong guess from an earlier session.
+
+Full documentation: [UNIVERSAL_DECODER.md](UNIVERSAL_DECODER.md).
+
+---
+
+## Favourites ordering (1.6.0)
+
+Drag-and-drop reordering exists in the **favourites** list only (the main list, search results and
+the categories keep their fixed order). A drag now:
+
+* lifts the row, which then follows the finger exactly; the rows in between slide **one row** aside
+  to open the gap, and nothing is scaled, moved twice or left with an offset;
+* resolves the drop position and the stored order from **one** calculation, so the row lands exactly
+  where the gap was shown;
+* stores the move **by id** (the dragged row and the row it is dropped in front of), so a favourites
+  list that skips entries can never move the wrong one;
+* animates the small leftover distance after the drop, so the row settles into the position that was
+  just written;
+* is disabled while a search is active, where the rows on screen are only part of the stored order.
+
+This order is completely independent of the Universal Decoder's permanent first position.
 
 ---
 

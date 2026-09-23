@@ -93,6 +93,10 @@ fun MainScreen(
     onClearInput: () -> Unit,
     onClearOutput: () -> Unit,
     onResetParams: () -> Unit,
+    onOpenOverridePicker: () -> Unit,
+    onClearOverride: () -> Unit,
+    onUseCandidate: (String) -> Unit,
+    onAnalyseAgain: () -> Unit,
 ) {
     val meta = state.meta
     val keyboard = LocalSoftwareKeyboardController.current
@@ -372,6 +376,21 @@ fun MainScreen(
                         style = MaterialTheme.typography.labelSmall,
                         color = mutedTextColor,
                         modifier = Modifier.padding(start = Spacing.xs),
+                    )
+                }
+
+                // ------------------------------------------------------------- analysis
+                // Only the Universal Decoder has anything to analyse, and only while there is input:
+                // everything here is derived from that input and never stored.
+                state.analysis?.let { diagnosis ->
+                    AnalysisCard(
+                        diagnosis = diagnosis,
+                        forcedToolId = state.forcedToolId,
+                        canAnalyseAgain = state.canAnalyseAgain,
+                        onOverride = onOpenOverridePicker,
+                        onClearOverride = onClearOverride,
+                        onUseCandidate = onUseCandidate,
+                        onAnalyseAgain = onAnalyseAgain,
                     )
                 }
 

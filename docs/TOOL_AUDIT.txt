@@ -1,10 +1,10 @@
-Text Hub 1.5.0 — full registry report, written by ToolAuditReportTest (:core:test)
+Text Hub 1.6.1 - full registry report, written by ToolAuditReportTest (:core:test)
 Every tool: id, category, round trip (rt), default parameters, behaviour on unusual input in both directions.
 Regenerate with: gradle :core:test --tests '*ToolAuditReportTest*'
+Generated on the delivered 1.6.1 tree: 379 core + 39 app unit tests, 0 failures.
 
-Text Hub tool audit — 73 tools
-documented + findable: 73/73
 ------------------------------------------------------------------------------------------------------------------------
+universal        SMART     rt=-    out=No supported format recognis
 aes              SECURE    rt=-    err=Please enter a password before processin
 aescbc           SECURE    rt=-    err=Please enter a password before processin
 chacha           SECURE    rt=-    err=Please enter a password before processin

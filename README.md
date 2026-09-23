@@ -1,6 +1,6 @@
 # Text Hub
 
-**A tiny, extremely polished Swiss-army knife for text — 73 encoding, cipher, hash and encryption tools in one offline Android app.**
+**A tiny, extremely polished Swiss-army knife for text — 74 encoding, cipher, hash and encryption tools in one offline Android app, with a Universal Decoder that tells you what you are looking at.**
 
 Text Hub is a native Kotlin/Jetpack Compose application. Pick a method, type or paste text,
 optionally set its parameters, and read the result — copy it, swap it back through the tool, or
@@ -14,15 +14,204 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.5.1 (versionCode 8) |
-| Tools | 73, in 5 categories (audited: see §9) |
-| Tests | 329 unit tests, all green (`:core:test` + `:app:testDebugUnitTest`) |
+| Version | 1.6.1 (versionCode 10) |
+| Tools | 74, in 6 categories (audited: see §9) |
+| Tests | 418 unit tests, all green (379 `:core:test` + 39 `:app:testDebugUnitTest`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
 | Permissions | none (no `INTERNET`, nothing else) |
 | Runtime dependencies | AndroidX/Compose only — no third-party crypto, JSON or networking library |
 | Developer | Catzilla |
+
+---
+
+## What's new in 1.6.1
+
+**Detection correctness round: every registered tool takes part in the analysis, and no encoding can
+be told its cipher settings are wrong - it has none.**
+
+* **The generic "these cipher settings are not valid" message is gone from the codebase.** It was
+  what a *decoding* failure used to look like: an unforeseen error was reported as a problem with
+  the cipher settings of a format that has no cipher settings at all. Every cipher failure now names
+  what is actually wrong (a key that needs letters, a length that is not a multiple of the block, a
+  key size that does not match the payload), and an unforeseen error is reported as exactly that.
+  The new fuzzing tests also found and fixed a crash in the Enigma plugboard (a non-Latin letter
+  indexed out of range) and two Punycode crashes.
+* **Detection is a registry matrix, not a list.** `DetectionIndex` builds its probe list from
+  `ToolRegistry.all`: each tool declares its own input hints (alphabet, markers, prefix, length
+  rule, structure, and the parameters its payload records) in its metadata, and every candidate is
+  validated by *running that tool*. Deterministic tools that declare nothing are probed generically
+  by decoding and re-encoding. `DetectionIndex.accountedFor()` reports how each registered tool
+  takes part, so nothing can be silently left out - including tools added in a later version.
+* **Candidate metadata is derived from the registry.** Whether a candidate needs a secret, which
+  parameter carries it, whether it needs cipher parameters and whether it is one-way all come from
+  the tool's own metadata, so an encoding can never ask for a password and a digest can never look
+  decryptable.
+* **The manual override is session-only.** Forcing a tool applies to the analysis in front of you,
+  is shown on the result card, and is never written to disk - a stale override cannot silently
+  hijack a later paste.
+* **Favourites drag polish.** The dragged row now follows the finger in the draw layer (the list
+  only recomposes when a row genuinely changes slot) and the edge auto-scroll is scaled by the real
+  frame time, so it moves at the same speed on a 60 Hz and a 120 Hz screen and cannot shoot away
+  after a stalled frame.
+
+## What's new in 1.6.0
+
+**A new first tool — the Universal Decoder — plus a favourites drag that finally behaves.**
+
+* **Universal Decoder** (`universal`, *Smart Tools*): paste anything and it says what it recognises,
+  how sure it is and why, then decodes it *with the ordinary tool for that format*. Detection runs in
+  two stages — deterministic structure (magic bytes, version ids, envelope layouts, PEM, JWE compact
+  form, OpenSSL `Salted__`, block sizes), then candidate analysis for character-set evidence.
+  Confidence is **High** only for structural evidence, so a 64-character hex value is reported as a
+  *possible* SHA-256 digest and is never decoded as if it were proof. It performs no cryptography of
+  its own: it dispatches to the registered tools, inheriting their validation and their error
+  messages. A secret is asked for **only** when the payload says it is encrypted, is never guessed,
+  tried or brute-forced, and never turns a failure into garbage. Layers are unwrapped one at a time
+  with a readable chain, depth and cycle limits, and **Analyse result again** peels the next layer.
+  A **manual override** ("Detected automatically: Base64 ▾") reuses the ordinary searchable picker.
+  Full documentation: [docs/UNIVERSAL_DECODER.md](docs/UNIVERSAL_DECODER.md).
+* **It is permanently first** in the main tool list, in search, in its category and after a restart,
+  clearing temporary data, favouriting or reordering. It cannot be dragged out of the way — while the
+  **favourites** list keeps its own, freely reorderable order (two independent orderings).
+* **Favourites drag was rebuilt again**, this time with the arithmetic in one place: the lifted row
+  follows the finger, the rows in between slide **one row** aside to open the drop gap, nothing is
+  scaled or moved twice, the drop position and the stored order come from a single resolution (so
+  they cannot disagree), the move is stored **by id** so a filtered list can never move the wrong
+  entry, and the row animates the leftover distance into the position that was just persisted.
+  Twenty new tests move every row of an A B C D E list to every position, check filtered lists,
+  rapid consecutive drags, cancellations and persistence.
+* **Signing material is no longer part of the source archive.** The release keystore, the credentials
+  and `docs/SIGNING.md` are shipped in a **separate private archive** that must never be uploaded;
+  the public `TextHub-1.6.0-source.zip` contains no key material at all (checked by name, by suffix
+  and by scanning the finished archive). No password is written in any Gradle file: the build reads
+  them from Gradle properties, the environment or a local `keystore.properties`, and builds an
+  unsigned release variant when they are absent — which is what a plain `git clone` should do.
+
+---
+
+## What's new in 1.5.1
+
+**Favourites reordering was rebuilt - the row no longer jumps while you drag it.** The old gesture
+reordered the list *during* the drag: it moved the row one slot at a time as soon as half a row had
+been covered, ran the list's own placement animation at the same time as the visual translation, and
+used a step that ignored the gap between rows. The animation and the translation fought each other
+and the half-row threshold flipped between two slots from one frame to the next, which is exactly
+the up-and-down wobble that was reported. Now:
+
+* the lifted row follows the finger exactly, with a haptic tick when it is picked up;
+* **the order does not change while the drag is in progress** - the slot the row would land on is
+  highlighted instead, and the list follows the finger if you drag near the top or bottom edge;
+* the step used for the arithmetic is the real row height plus the gap, measured from the rows
+  themselves, and a full 60% of a row has to be covered before the highlighted slot changes (so a
+  shaky finger cannot make it flicker);
+* releasing commits the move **once**, so the stored order is written one time per drag instead of
+  on every frame;
+* dragging is offered only on the plain favourites list - while a search is active the rows are a
+  subset, and a drop would otherwise move the wrong entry in the stored order.
+
+The drag arithmetic is unit-tested (`DragReorderTest`, 12 tests) including a sweep that asserts the
+target position can never move backwards as the finger travels - the mathematical signature of the
+old bug.
+
+**Other bugs found and fixed in the same pass**
+
+| Fixed | What was wrong |
+| --- | --- |
+| Dragging in a *filtered* favourites list could reorder the wrong tools | The drag now only exists on the unfiltered list; the hint text says so by disappearing with the search box in use |
+| A pasted parameter that no longer exists (removed choice, number now out of range) was restored as a broken setting | Remembered parameters are validated against the tool as it is today; anything that no longer fits is dropped and the default is used |
+| Typing or pasting a very large text counted characters/words/lines on the UI thread | Above 20 000 characters the count runs on a background thread, and the result's statistics are measured in the same background step as the processing |
+| A1Z26 turned any non-ASCII letter into a nonsense number (ü became 188) because `Char.isLetter()` matches thousands of characters | Only the 26 ASCII letters have a position; everything else passes through unchanged, and the info sheet says so |
+| A1Z26 written with a different separator could not be read back | Decoding accepts every separator people actually type (space, hyphen, comma, dot, slash, pipe) and refuses values outside 1-26 |
+| The "nothing here" message in the picker blamed an empty search even when filters were empty | The two cases now say what is actually true |
+
+Test total: **329** (`:core:test` 317 + `:app:testDebugUnitTest` 12), all green; `:app:lintDebug`
+clean.
+
+---
+
+## What's new in 1.5.0
+
+This release is the *final fix, compatibility and QA* round. Nothing was redesigned: the toolset,
+the payload formats, the privacy model and the look stay as they were, and the changes below are
+the ones the review actually justified.
+
+**1. Temporary data can be cleared - and Favourites are never touched.** Settings now ends with a
+standalone *Temporary data* card that shows how much disposable data the app holds (in B / KB / MB),
+explains what is stored, and offers *Clear*. A confirmation lists exactly what will be removed
+(remembered tool settings, the recent-tools list) and what will be kept (**your favourites and their
+order**, theme, accent colour, selected tool). The size on screen is recomputed immediately after
+clearing. Nothing secret was ever stored, and clearing never touches text, passwords, keys or
+favourites.
+
+**2. The Favourites section can be reordered by dragging.** Long-press a favourite to lift it - the
+row is drawn raised and slightly enlarged - then drag it anywhere in the list. Each move is written
+to preferences immediately, so the order survives a restart. The main list, search results,
+categories and recents keep their fixed order and cannot be dragged.
+
+**3. Controls are generated from what a tool can actually do.** The action button carries the
+tool's own verb in the current direction ("Encrypt", "Decode", "Hash", "Compare"), never a generic
+"Process"; swap is hidden wherever the result cannot be pushed back (digests, checksums,
+comparisons, analysis); a direction switch appears only when it changes something, and symmetric and
+single-operation tools say so in one line instead. The second pass also removed the two genuinely
+duplicated buttons left in the main screen (the output card had two *Clear* buttons, and *Type here*
+only refocused the field above it) and moved the last two "wall of settings" cases - Enigma's
+Ringstellung and the regex flags - under the collapsed section.
+
+**4. Parameters are recorded, validated and enforced - never guessed.** A new audit
+(`ParamDisciplineAuditTest`) encodes every tool with its defaults, decodes with one setting changed,
+and requires either the original text or a friendly refusal. It found two real defects, both fixed:
+Base58/Base85 decoding with the wrong variant returned confident mojibake instead of failing, and
+UTF-16/UTF-32 decoding with `format = decimal` silently read decimal tokens as hexadecimal. Tools
+whose settings genuinely define the transform (Bacon's 24/26-letter variants, A1Z26 separators,
+Scytale's diameter, Baudot's alphabet, case/leet/regex, the Base58/Base85 variants) are listed as
+documented exceptions and say so in their info sheet.
+
+**5. External formats.** OpenSSL `enc` files (legacy MD5 and SHA-256, PBKDF2 with configurable
+iterations, wrapped or unwrapped) and JWE compact tokens (`dir` + A256GCM, `A128CBC-HS256`) are
+accepted with their settings, and the errors explain what was missing rather than claiming the data
+"was not made by Text Hub".
+
+**6. Additional Encryption.** Every encryption tool keeps the common case on top - password, key
+size, a format choice - and moves mode, padding, character encoding, IV/nonce and its format,
+input/output format, tag length, AAD and AAD format into a collapsed *Additional encryption
+settings* section with defaults that match the ordinary case, inline validation for impossible
+combinations, and a *Reset* action.
+
+**7. Full second pass over all 73 tools** (`ToolReviewPassTwoTest`, `ParamDisciplineAuditTest`,
+plus the earlier audits): control visibility, parameter validation, empty input, Unicode, round
+trips, error friendliness, security claims, ids and searchability, payload compatibility. Payloads
+frozen from 1.4.1 and 1.4.2 are decrypted in the tests to prove no update strands data.
+
+Test total: **317** (`:core:test`, all green).
+
+---
+
+## What's new in 1.4.2
+
+**Fixed: the AES Key size setting is now honoured on decryption.** Previously an AES-128 message
+decrypted with the AES-256 setting (and any other combination) succeeded, because the setting was
+only read when encrypting and decryption guessed the key size. Encryption now records the size in
+the payload's `kdfId` byte (`0x02` = 256-bit; `0x01` remains "legacy, size not recorded") and
+decryption derives exactly that key. A mismatch is **refused** with a sentence that names the size
+the message needs, so changing the setting can never silently succeed. Messages written by
+1.3.0–1.4.1 still decrypt, and report which size they actually use.
+
+**The whole toolset was audited (all 73 tools).** The audit added in this round found and fixed
+three real defects, and two documentation ones:
+
+| Found | Fix |
+| --- | --- |
+| *Spelling alphabet* crashed with an `ArrayIndexOutOfBoundsException` on any non-ASCII letter or digit (`Grüße`, `नमस्ते`, `٣`): it used `Char.isLetter()`, which is true for thousands of characters, to index a 26-entry table | Only ASCII `A–Z`/`0–9` are spelled; anything else is refused with a friendly sentence that lists the characters it cannot spell |
+| Sixteen tools could not be found by typing their own id (`utf16`, `railfence`, `aescbc`, `textdiff`, …) because ids were missing from the search index | The search index now contains every id plus a punctuation-free spelling of the name, so `railfence` *and* `rail fence` both work |
+| A non-ASCII letter in a cipher key was silently turned into a bogus A–Z shift (Vigenère, Beaufort, Autokey, Playfair, ADFGX, custom alphabets) | Keys are filtered to ASCII letters (and digits where the alphabet has them), so no invalid index can be produced |
+| The reference and README called two tools by names the app never uses | Documentation now matches the registry exactly, and a test enforces it |
+
+New regression tests lock all of this down: `ToolAuditTest` sweeps every tool's parameters,
+defaults, sensitive flags, behaviour on ten unusual inputs in both directions, searchability by id
+and name, claim discipline, error friendliness and key-size enforcement; `ToolAuditReportTest`
+writes `core/build/tool-audit.txt`, a per-tool report of the whole registry. Test total: **260**.
 
 ---
 
@@ -50,7 +239,8 @@ Encode • Decode • Transform
 
 | Area | What Text Hub does |
 | --- | --- |
-| Tool selection | Searchable bottom sheet with categories, instant search, favourites and recents. The list scrolls to the top when the query or filter changes, and a 73-tool list stays fully reachable |
+| Tool selection | Searchable bottom sheet with categories, instant search, favourites and recents. The list scrolls to the top when the query or filter changes, and a 74-tool list stays fully reachable |
+| Analysis | The **Universal Decoder** is always the first tool: it names the format it recognises, the confidence, the reason, the chain of layers and the secret it needs (if any), and never claims to decrypt what it cannot |
 | Direction | Per-tool mode switch: *Encode/Decode*, *Encrypt/Decrypt* or *Transform* — irrelevant controls are hidden |
 | Parameters | Only the settings the selected tool needs (key size, shift, keys, alphabets, separators, variants, modes …) |
 | Processing | Live (debounced) or on button press; heavy input is processed off the main thread with a progress indicator |
@@ -66,7 +256,13 @@ Encode • Decode • Transform
 
 ## 2. Supported tools
 
-73 tools, grouped exactly as they appear in the app.
+74 tools, grouped exactly as they appear in the app.
+
+### Smart tools (1)
+
+| Tool | What it does |
+| --- | --- |
+| **Universal Decoder** | Paste anything: Text Hub names the format it recognises, at what confidence and why, decodes what is certain, asks for the one secret a payload actually needs, lists the other candidate formats, unwraps layers with a readable chain, and explains what it cannot do. It is a dispatcher — every step is the existing tool for that format — never a "decrypt anything" button. |
 
 ### Secure encryption (7)
 
@@ -278,7 +474,7 @@ Key pieces:
 * `TextProcessor` — the one interface every tool implements: `meta` (id, name, glyph, category,
   classification, direction labels, parameters, info sheet, keywords) and
   `process(input, params, direction)`.
-* `ToolRegistry` — the single list of 73 processors, plus search and lookup. Adding a tool means
+* `ToolRegistry` — the single list of 74 processors, plus search and lookup. Adding a tool means
   writing one class and adding one line.
 * `ProcessingEngine.run(...)` — executes a processor and converts *any* failure into a friendly,
   human-readable message. Raw exceptions never reach the UI.
@@ -389,8 +585,20 @@ key.
 
 ## 8. Signing and updates
 
-The release keystore ships with the project (`texthub-release.jks`, alias `texthub`) and
-`app/build.gradle.kts` already points at it, so `assembleRelease` produces an update-ready APK.
+**Signing material is kept out of the source.** The release keystore and its credentials travel in a
+separate private archive (`TextHub-<version>-signing-files.zip`) together with
+`docs/SIGNING.md`; that archive must never be uploaded, attached or committed, and it is never part
+of the published source archive. No password is written in any Gradle file — the build reads them
+from Gradle properties, the environment or a local `keystore.properties`:
+
+```bash
+./gradlew :app:assembleRelease \
+  -PtexthubStorePassword=… -PtexthubKeyPassword=…     # or TEXTHUB_STORE_PASSWORD / TEXTHUB_KEY_PASSWORD
+```
+
+With none of them present (a plain `git clone`), the release variant is simply built **unsigned**
+instead of failing, so the source archive stays buildable for everybody. The release APK published
+with this version was signed with the project's own keystore:
 
 * Certificate SHA-256: `CC:69:D4:D0:50:EC:FA:9F:7A:94:B9:6E:9D:EE:30:5F:C4:4B:7D:B8:CA:17:BB:E1:B1:93:CD:B4:18:29:82:B1`
 * Valid until 2056-09-13 (RSA 2048-bit, `SHA256withRSA`), application ID `com.texthub.app`
@@ -414,7 +622,8 @@ password-manager Base64 trick), manual signing and how to switch to your own key
 
 ## 9. Testing
 
-`./gradlew :core:test` runs **260 unit tests** in `core/src/test/kotlin/com/texthub/core/`:
+`./gradlew :core:test` runs **379 unit tests** in `core/src/test/kotlin/com/texthub/core/`, and
+`./gradlew :app:testDebugUnitTest` adds **39** for the app layer (418 in total, all green):
 
 | Test class | Tests | Coverage |
 | --- | --- | --- |
@@ -429,6 +638,10 @@ password-manager Base64 trick), manual signing and how to switch to your own key
 | `RegistryTest` | 15 | Unique ids, every tool documented and classified, only the six authenticated tools may claim security, sensitive parameters flagged, search behaviour, round trip of every tool, Unicode round trips, friendly error messages (no stack traces), direction swap |
 | `ToolAuditTest` | 12 | Sweeps **every** registered tool: choice/number parameters, default maps, sensitive flags, friendliness for ten unusual inputs in both directions, searchability by id and name, security-claim discipline, documentation coverage, key-size enforcement, and regression tests for the bugs found by the audit |
 | `ToolAuditReportTest` | 1 | Writes `core/build/tool-audit.txt`: a per-tool report (id, category, parameters, behaviour on a sample, round trip) for reviewing the whole registry at once |
+| `UniversalDecoderTest` | 38 | The whole contract of the new tool: registration, permanent first position and the absence of any cryptography of its own; every deterministic format decoded through its own tool; all Text Hub envelopes (AES-GCM, AES-CBC+HMAC, ChaCha20, AES-CTR+HMAC, raw-key GCM, RSA hybrid, OpenSSL, JWE); wrong password, truncated payload, invalid envelope, wrong key size and authentication failure; digests as one-way; ambiguity as candidates; nested chains with depth and cycle limits; empty/random/malformed/oversized input; large input; and no secret or plaintext in any diagnosis |
+| `PrefsModelTest` (extended) | 15 | Adds the drag store: moving a favourite by id in front of another row, dropping at the end, refusing an anchor that is not on screen, and "clear temporary data" never touching the order |
+| `DragReorderTest` (app) | 39 | The drag arithmetic *and* the mapping: the A B C D E matrix (every row to every position), the displayed slot equal to the stored position, the rows sliding exactly one row aside, the leftover settle distance, clamping and dead zones, filtered favourites moving the right entry, rapid consecutive drags and cancellations, and the smooth-motion rules - the same auto-scroll speed at 60 Hz and 120 Hz, a capped catch-up after a stalled frame, a slow drag that does not move until 60% of a row is covered, a fast drag that lands under the finger, hovering on a boundary without flicker, and the offset absorbing exactly what was scrolled |
+| `UniversalDecoderDispatchTest` | 19 | The Universal Decoder through the *production* path (registered tool -> registry -> processing engine): encode "Hello TextHub" -> analyse -> decode, an encoding that never asks for a secret and never reaches a cipher check, no path in the whole corpus that reports a cipher-settings problem, parameter torture over every deterministic and classical tool, the registry accounting matrix, candidates that only ever name registered tools, and the session-only manual override |
 
 `RegistryTest` iterates over the *whole* registry, so a newly added tool is immediately covered by
 round-trip, classification, documentation and error-message checks. JUnit XML reports land in
@@ -436,7 +649,7 @@ round-trip, classification, documentation and error-message checks. JUnit XML re
 
 Outside the sandbox, one manual pass is worth doing on a device: open the picker and scroll to the
 end, switch accents, generate a key pair with RSA and check the icon on the home screen. The
-device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`docs/RELEASE_REPORT_1.5.1.md`](docs/RELEASE_REPORT_1.5.1.md) records what this release changed, what was verified with tooling and what could not be verified without a device.
+device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`docs/RELEASE_REPORT_1.6.0.md`](docs/RELEASE_REPORT_1.6.0.md) records what this release changed, what was verified with tooling and what could not be verified without a device.
 
 ---
 
@@ -521,27 +734,32 @@ border, never by colour alone.
 ```
 TextHub/
 ├── apk/
-│   ├── TextHub-1.5.1-release.apk        signed release build
-│   └── TextHub-1.5.1-debug.apk          debug build
+│   ├── TextHub-1.6.0-release.apk        signed release build
+│   └── TextHub-1.6.0-debug.apk          debug build
 ├── core/                                plain JVM library: algorithms + tests
 │   └── src/
 │       ├── main/kotlin/com/texthub/core/
 │       │   ├── TextProcessor.kt         the interface every tool implements
-│       │   ├── ToolRegistry.kt          all 73 tools, search, ProcessingEngine
+│       │   ├── ToolRegistry.kt          all 74 tools, search, ProcessingEngine
 │       │   ├── model/                   ToolMeta, ParamSpec, Classification, Errors
 │       │   ├── codec/                   Base32/45/58/64/85/91, Punycode, Braille,
 │       │   │                            Baudot tables, hex dump, checksums, …
+│       │   ├── detector/                UniversalDecoder (two-stage detection) +
+│       │   │                            Diagnosis (confidence, candidates, chain)
+│       │   ├── prefs/                    PrefsModel: what may be stored, favourites order
 │       │   ├── crypto/                  AesGcmPayload, AesCbcHmac, AesCtrHmac,
 │       │   │                            ChaCha20Poly1305, RawKeyGcm, RsaHybrid,
 │       │   │                            Pbkdf2, Digests
-│       │   ├── processors/              one class per algorithm (73 tools)
+│       │   ├── processors/              one class per algorithm (74 tools)
 │       │   └── util/                    dependency-free JSON, text helpers
-│       └── test/kotlin/com/texthub/core/  246 unit tests in 9 classes
+│       └── test/kotlin/com/texthub/core/  379 unit tests in 18 classes
 ├── app/                                 Android app (Kotlin + Compose)
 │   └── src/main/
 │       ├── kotlin/com/texthub/app/
 │       │   ├── MainActivity.kt
-│       │   ├── ui/                      HubApp, MainScreen, ToolPickerSheet,
+│       │   ├── ui/                      HubApp, MainScreen, AnalysisCard (the Universal
+│       │   │                            Decoder card), ToolPickerSheet (favourites drag),
+│       │   │                            DragReorder (the drag arithmetic + drop mapping),
 │       │   │                            ToolInfoSheet, SettingsScreen, components,
 │       │   │                            theme/ (colours, accents, type, spacing)
 │       │   ├── viewmodel/HubViewModel.kt   single StateFlow of HubUiState
@@ -549,15 +767,16 @@ TextHub/
 │       └── res/                         strings, themes, adaptive launcher icon
 ├── docs/
 │   ├── ENCRYPTION_FORMAT.md             payload specification + compatibility contract
+│   ├── UNIVERSAL_DECODER.md             detection, confidence, limits, drag ordering
 │   ├── PRIVACY.md                       what is stored, what is never stored
 │   ├── QA_CHECKLIST.md                  verification checklist for each round
-│   ├── SIGNING.md                       keystore, fingerprints, shipping updates
+│   ├── SIGNING.md                       keystore, fingerprints, shipping updates (private archive)
 │   └── TOOLS.md                         full tool reference with worked examples
 ├── tools/
 │   ├── install-toolchain.sh             JDK + Gradle + Android SDK on a bare machine
 │   ├── make_legacy_icons.py             regenerates the pre-adaptive launcher PNGs
-│   └── update_docs_r3.py, update_docs_r4.py   documentation passes, kept for reference
-├── texthub-release.jks                  release keystore (see docs/SIGNING.md)
+│   └── make_release_archives.py         builds the public source archive and the private
+│                                        signing archive, and scans the public one for secrets
 ├── build.gradle.kts, settings.gradle.kts, gradle.properties
 └── README.md
 ```
@@ -580,6 +799,10 @@ TextHub/
   info sheet.
 * **RSA-OAEP cannot encrypt long text on its own**, which is exactly why the hybrid construction is
   used; the private key is the single point of failure for reading messages.
+* **The Universal Decoder only knows the formats Text Hub supports.** It identifies and processes
+  supported Text Hub formats where the format can be determined reliably; it cannot decrypt
+  arbitrary unknown encrypted data, it does not recover lost passwords, and it deliberately reports
+  "no supported format recognised" instead of guessing.
 * **Text Hub is not audited software**, and it is not a replacement for a password manager or a
   messenger built for secrecy.
 
