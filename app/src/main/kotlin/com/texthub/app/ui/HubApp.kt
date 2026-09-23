@@ -16,8 +16,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import com.texthub.app.ui.theme.TextHubTheme
 import com.texthub.core.detector.UniversalDecoder
@@ -35,6 +37,7 @@ fun HubApp(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val haptics = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -64,16 +67,34 @@ fun HubApp(
         scope.launch { overridePickerState.hide() }.invokeOnCompletion { overridePickerVisible = false }
     }
 
+    // The one light haptic the app gives for a completed action, and only when the user kept
+    // haptics on. Compose's haptics go through the view's, so the system haptic setting is
+    // respected on top of this preference.
+    fun confirmHaptic() {
+        if (state.haptics) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    /**
+     * Copies exactly the value it is given, through the ordinary clipboard path: the same
+     * confirmation and haptic preferences as every other copy. Used by the RSA key generator's
+     * sections, where "Copy" means the public key or the private key - never both together, and
+     * never automatically.
+     */
+    fun copyValue(text: String) {
+        clipboard.setText(AnnotatedString(text))
+        confirmHaptic()
+        if (state.copyConfirmation) {
+            scope.launch { snackbarHostState.showSnackbar(context.getString(com.texthub.app.R.string.msg_copied)) }
+        }
+    }
+
     fun copyOutput() {
         val text = state.output
         if (text.isEmpty()) {
             scope.launch { snackbarHostState.showSnackbar(context.getString(com.texthub.app.R.string.msg_nothing_to_copy)) }
             return
         }
-        clipboard.setText(AnnotatedString(text))
-        if (state.copyConfirmation) {
-            scope.launch { snackbarHostState.showSnackbar(context.getString(com.texthub.app.R.string.msg_copied)) }
-        }
+        copyValue(text)
     }
 
     fun shareOutput() {
@@ -105,6 +126,13 @@ fun HubApp(
                         onParamChange = viewModel::setParam,
                         onInputChange = viewModel::setInput,
                         onProcess = { viewModel.process(immediate = true) },
+                        onGenerateKeys = viewModel::generateKeyPair,
+                        onCopyValue = ::copyValue,
+                        onSaveKey = viewModel::saveActiveRsaKey,
+                        onLoadKey = viewModel::loadSavedRsaKey,
+                        onDeleteKey = viewModel::deleteSavedRsaKey,
+                        onClearKey = viewModel::clearActiveRsaKey,
+                        onConsumeKeyEvent = viewModel::consumeRsaEvent,
                         onCopy = ::copyOutput,
                         onSwap = viewModel::swap,
                         onShare = ::shareOutput,
@@ -112,8 +140,14 @@ fun HubApp(
                             val text = clipboard.getText()?.text
                             if (!text.isNullOrEmpty()) viewModel.setInput(state.input + text)
                         },
-                        onClearInput = viewModel::clearInput,
-                        onClearOutput = viewModel::clearOutput,
+                        onClearInput = {
+                            confirmHaptic()
+                            viewModel.clearInput()
+                        },
+                        onClearOutput = {
+                            confirmHaptic()
+                            viewModel.clearOutput()
+                        },
                         onResetParams = viewModel::resetParams,
                         onOpenOverridePicker = { overridePickerVisible = true },
                         onClearOverride = { viewModel.setParam(UniversalDecoder.PARAM_PREFER, "") },
@@ -130,11 +164,20 @@ fun HubApp(
                         onAccentSelected = viewModel::setAccent,
                         onAutoProcessChanged = viewModel::setAutoProcess,
                         onCopyConfirmationChanged = viewModel::setCopyConfirmation,
+                        onHapticsChanged = viewModel::setHaptics,
                         onClearTemporaryData = {
                             viewModel.clearTemporaryData()
                             scope.launch {
                                 snackbarHostState.showSnackbar(
                                     context.getString(com.texthub.app.R.string.msg_data_cleared)
+                                )
+                            }
+                        },
+                        onRestoreDefaults = {
+                            viewModel.restoreDefaults()
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(com.texthub.app.R.string.msg_defaults_restored)
                                 )
                             }
                         },
@@ -146,6 +189,7 @@ fun HubApp(
                 LaunchedEffect(Unit) { pickerState.show() }
                 ToolPickerSheet(
                     sheetState = pickerState,
+                    hapticsEnabled = state.haptics,
                     currentToolId = state.toolId,
                     favorites = state.favorites,
                     recents = state.recents,
@@ -163,6 +207,7 @@ fun HubApp(
                 LaunchedEffect(Unit) { overridePickerState.show() }
                 ToolPickerSheet(
                     sheetState = overridePickerState,
+                    hapticsEnabled = state.haptics,
                     // Nothing is selected: this sheet chooses a *format* for the analysis, not the
                     // tool the app is using, so no row is marked as current.
                     currentToolId = "",

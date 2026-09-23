@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -41,12 +43,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.texthub.app.R
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.cardContainerColor
 import com.texthub.app.ui.theme.mutedTextColor
@@ -154,23 +161,29 @@ fun SegmentedControl(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        options.forEachIndexed { index, label ->
-            val selected = index == selectedIndex
-            val bg by animateColorAsState(
-                targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                label = "segmentBackground",
-            )
-            val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(bg)
-                    .clickable { onSelect(index) }
-                    .padding(horizontal = Spacing.sm),
-                contentAlignment = Alignment.Center,
-            ) {
+            options.forEachIndexed { index, label ->
+                val selected = index == selectedIndex
+                val bg by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    label = "segmentBackground",
+                )
+                val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(bg)
+                        // Selectable, not merely clickable: TalkBack then announces which of the
+                        // segments is the current one instead of reading two identical labels.
+                        .selectable(
+                            selected = selected,
+                            role = Role.Tab,
+                            onClick = { onSelect(index) },
+                        )
+                        .padding(horizontal = Spacing.sm),
+                    contentAlignment = Alignment.Center,
+                ) {
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelLarge,
@@ -316,6 +329,10 @@ fun NumberStepper(
                 modifier = Modifier.weight(1f),
             )
         }
+        // Resolved here: the semantics blocks inside the buttons are not composable scopes, and the
+        // wording belongs to the string resources like every other description in the app.
+        val decreaseLabel = stringResource(R.string.cd_decrease)
+        val increaseLabel = stringResource(R.string.cd_increase)
         val shape = RoundedCornerShape(12.dp)
         Surface(
             shape = shape,
@@ -323,7 +340,7 @@ fun NumberStepper(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onValueChange((value - 1).coerceAtLeast(min)) }) {
-                    Icon(Icons.Outlined.Remove, contentDescription = "Decrease")
+                    Icon(Icons.Outlined.Remove, contentDescription = decreaseLabel)
                 }
                 Box(
                     modifier = Modifier
@@ -353,7 +370,7 @@ fun NumberStepper(
                     )
                 }
                 IconButton(onClick = { onValueChange((value + 1).coerceAtMost(max)) }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Increase")
+                    Icon(Icons.Outlined.Add, contentDescription = increaseLabel)
                 }
             }
         }
@@ -417,12 +434,21 @@ fun TextAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentDescription: String? = null,
 ) {
     val color = if (enabled) MaterialTheme.colorScheme.primary else mutedTextColor.copy(alpha = 0.5f)
     Box(
         modifier = modifier
+            // The pill stays visually the same size; only the touchable area grows to the
+            // accessible minimum, so Copy / Paste / Clear are easy to hit and nothing shifts.
+            .minimumInteractiveComponentSize()
             .clip(RoundedCornerShape(50))
             .clickable(enabled = enabled) { onClick() }
+            .semantics {
+                // Distinguishes look-alike actions for TalkBack ("Copy public key" vs
+                // "Copy private key"). Never carries content - only the label of the action.
+                contentDescription?.let { this.contentDescription = it }
+            }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {

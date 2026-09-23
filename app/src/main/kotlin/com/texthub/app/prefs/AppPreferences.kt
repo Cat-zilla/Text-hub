@@ -65,6 +65,10 @@ class AppPreferences(context: Context) {
         get() = read().bool(PrefsKeys.COPY_CONFIRMATION, true)
         set(value) = update { it.with(PrefsKeys.COPY_CONFIRMATION, value.toString()) }
 
+    var haptics: Boolean
+        get() = read().bool(PrefsKeys.HAPTIC_FEEDBACK, true)
+        set(value) = update { it.with(PrefsKeys.HAPTIC_FEEDBACK, value.toString()) }
+
     var lastTool: String?
         get() = read().string(PrefsKeys.LAST_TOOL)
         set(value) = update { it.with(PrefsKeys.LAST_TOOL, value) }
@@ -135,6 +139,13 @@ class AppPreferences(context: Context) {
      * only be removed by tapping their star. Appearance settings and the last tool are kept too.
      */
     fun clearTemporaryData() = update { it.clearTemporary() }
+
+    /**
+     * Restores every user-configurable preference to its out-of-the-box value. Only the favourites
+     * and their order survive (see [PrefsData.restoredToDefaults]); nothing outside the preference
+     * store is touched, and there was never anything secret in it to begin with.
+     */
+    fun restoreDefaults() = update { it.restoredToDefaults() }
 
     companion object {
         private const val PREFS_NAME = "texthub_preferences"

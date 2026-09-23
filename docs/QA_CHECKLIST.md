@@ -271,3 +271,117 @@ Manual (no emulator in this environment):
 | 7 | Paste random text | "No supported format recognised" - never a guess |
 | 8 | Drag a favourite quickly up and down, hold it at the bottom edge, then release | The row stays under the finger, the list scrolls at a steady speed, the rows slide aside once each, and the row settles where it was released with no flicker or permanent offset |
 | 9 | Drag on a 120 Hz device (if available) | The edge scroll moves at the same speed as on a 60 Hz device |
+
+---
+
+## Round 12 — 1.6.2: Universal Decoder crash safety + downward drag placement
+
+Automated (`:core:test` 390 + `:app:testDebugUnitTest` 57 = 447, 0 failures):
+
+| Check | Test |
+| --- | --- |
+| Typing `a`, `abc`, `hello`, `123`, empty, whitespace, punctuation, arbitrary Unicode, newlines, 100 KB lines, malformed Base64/Punycode/Enigma/JWT/OpenSSL/PEM, prose — through the exact app path, nothing throws, no cipher-settings wording, no stack traces | `UniversalDecoderCrashSafetyTest.typingAnythingNeverThrowsAndNeverCrashWordings`, `typingProgressivelyNeverThrows`, `repeatedTypingAndDeletingNeverThrows`, `analysingWithASecretTypedNeverThrows`, `detectionSurvivesEveryInputShape` |
+| A `RuntimeException`, `StackOverflowError` or `OutOfMemoryError` from a registered tool becomes the friendly error and cannot kill the process; `ToolException` keeps its own message | `aRuntimeExceptionFromAToolBecomesAFriendlyError`, `aStackOverflowErrorFromAToolDoesNotKillTheProcess`, `anOutOfMemoryErrorFromAToolDoesNotKillTheProcess`, `aToolExceptionStillKeepsItsOwnMessage` |
+| One broken detection candidate costs only itself; other candidates are still evaluated | `oneBrokenCandidateCostsOnlyItself` |
+| Drop placement: release between C/D → `A C B D E`, between D/E → `A C D B E`; one-position and multi-position downward drags; centre/boundary (60 % dead zone); intentional bottom drops; upward drags; adjacent swaps; first/last row; 40-row lists; auto-scroll-active drops; unknown rows | the whole of `DragDropPlacementTest` (18 tests) |
+| The stale-step failure mode (the 4 dp gap mistaken for the row step) must clamp to the end — pinned so it cannot return | `DragDropPlacementTest.theStepIncludesTheGapNotTheGapAlone` |
+| A scrolled list must read the dragged row's true on-screen position (mid-viewport, not "past the bottom edge") | `aScrolledListNoLongerLooksPastTheBottomEdge`, `aRowVisibleAfterScrollReportsItsTrueViewportPosition`, `autoScrollWhileDraggingStillLandsWhereTheFingerEndedUp` |
+
+Manual (no emulator in this environment — same caveat as rounds 10–11):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Open the Universal Decoder and type `a`, delete it, type `abc`, `hello`, `123`, random punctuation, emoji | No crash, ever. Ordinary words show "No supported format recognised"; nothing ever mentions cipher settings |
+| 2 | Paste `SGVsbG8gVGV4dEh1Yg==`, then malformed Base64 (`SGVsbG8`, `====`), then a 500 KB paste | Decoded / friendly error / no crash and no hang |
+| 3 | Star 10–15 tools, open the picker's favourites list, drag a row **down** one slot and release between two rows | The row is stored exactly where released — never at the bottom unless released in the bottom region |
+| 4 | Repeat step 3 after scrolling the favourites list, and at the top, middle and bottom of the list | Same placement everywhere; the list only auto-scrolls when the row is genuinely near the edge |
+| 5 | Drag a row upward one and several slots, and to the very top | Stored where released; only a genuine top-region release moves it to the top |
+| 6 | Drag quickly with a stalled frame (scroll fast, then drag) | Feel unchanged from 1.6.1: row follows the finger, no jump to the ends |
+
+---
+
+## Round 13 — 1.6.3: haptics, restore-defaults, decoder states, accessibility
+
+Automated (450 total, 0 failures):
+
+| Check | Test |
+| --- | --- |
+| Restore defaults keeps exactly the favourites and their order, resets everything else | `PrefsModelTest.restoringDefaultsKeepsExactlyTheFavouritesAndNothingElse` |
+| Restore defaults is safe on an empty/partial store | `restoringDefaultsOnAnEmptyStoreChangesNothing` |
+| Haptics are an appearance-class preference (kept by "clear temporary data", reset by "restore defaults", default on) | `theHapticPreferenceIsKeptWhenClearingAndResetWhenRestoring` |
+| The refined "nothing detected" wording passes the full decoder suite unchanged | whole `:core:test` run |
+
+Manual (no emulator in this environment):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Settings → Interaction → toggle Haptic feedback off, then copy a result and toggle a favourite star | No vibration at all; toggle back on and both give a light tick |
+| 2 | System sound/haptics off, haptics on in the app | Still no vibration (the system setting wins) |
+| 3 | Settings → Restore defaults, read the dialog, confirm | Theme returns to System, accent to Teal, switches to defaults, recents/tool-settings cleared, snackbar shown; favourites and their order unchanged; text on screen untouched |
+| 4 | Open the Universal Decoder with an empty input | Two quiet hint lines with example formats; they disappear while typing |
+| 5 | Type `hello` | "No supported format was recognised" with the new explanation; no error styling |
+| 6 | TalkBack: swipe through Settings | Each switch reads as one control ("…, on/off") with a full-row toggle target |
+| 7 | TalkBack: Encode/Decode segments | The selected segment is announced as selected |
+| 8 | TalkBack: a number parameter | Steppers announce localized "Decrease"/"Increase" |
+| 9 | Copy / Paste / Clear pills | Same look; slightly larger touch area |
+
+---
+
+## Round 14 — 1.6.4: RSA Key Pair Generator output/state fix
+
+Automated (467 total, 0 failures — `RsaKeyPairGeneratorTest`, 17 tests):
+
+| Check | Test |
+| --- | --- |
+| The generator may only run through its own action; every other tool stays automatic | `theGeneratorMayOnlyRunThroughItsOwnAction`, `everyOtherToolKeepsItsAutomaticBehaviour` |
+| Generated PEM is structurally valid (X.509 / PKCS#8) and the halves are a matching pair | `aGeneratedPairIsStructurallyValidPem`, `theHalvesAreAMatchingPair` |
+| Reported size matches the generated modulus; fingerprint is deterministic, public-only | `theReportedKeySizeMatchesTheGeneratedKey`, `theFingerprintIsDeterministicAndCoversOnlyThePublicKey` |
+| Second generation mints a new pair; repeated generation is safe; encryption round-trip still works | `anExplicitSecondGenerationCreatesANewPair`, `repeatedGenerationIsSafe`, `thePairStillWorksWithTheRsaEncryptionTool` |
+| The processor output parses into the three sections; format/parse round-trip is lossless | `theProcessorOutputParsesIntoTheThreeSections`, `theFormatAndParseRoundTripIsLossless` |
+| Each Copy carries only its own half; the parser refuses everything that is not generator output | `eachCopyCarriesOnlyItsOwnHalf`, `theParserRefusesAnythingThatIsNotGeneratorOutput` |
+| Failures arrive as recoverable errors; the 1.6.2 engine boundary holds; no key material in error strings | `anUnsupportedSizeIsARecoverableToolError`, `theEnginePathStillConvertsUnexpectedFailuresSafely`, `errorMessagesNeverCarryKeyMaterial` |
+
+Manual (no emulator in this environment — not performed here):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Open the RSA Key Pair Generator | Empty state: "Generate an RSA key pair to get started." — **no key pair appears by itself** |
+| 2 | Change the key size, toggle settings, leave and return | Still no automatic generation; nothing regenerates behind your back |
+| 3 | Press Generate key pair | Progress shows; then Key information (size + fingerprint), Public key and Private key in separate cards; no generic output box anywhere |
+| 4 | Copy public key / Copy private key (TalkBack if available) | Each copies exactly its half (paste to check); described as "Copy public key" / "Copy private key"; confirmation snackbar + light haptic per the 1.6.3 preferences |
+| 5 | Press Generate again | A new pair replaces the old one immediately (new fingerprint), no extra dialog |
+| 6 | Generate a 4096-bit pair | Progress bar stays visible; UI never freezes |
+| 7 | Rotate the screen / use other tools and come back | Pair stays during recomposition; switching tools clears it (never persists) |
+| 8 | Confirm: no private-key text in any content description, snackbar or the fingerprint card | Only the fingerprint (public) is shown outside the private card |
+
+---
+
+## Round 15 — 1.6.5: RSA active-pair persistence + named encrypted key collection
+
+Automated (488 total, 0 failures — `RsaKeyVaultTest`, 21 tests):
+
+| Check | Test |
+| --- | --- |
+| Blank names refused; names trimmed; save/load returns exactly the same pair; fingerprint survives | `aBlankNameIsRefused`, `aNameIsTrimmedBeforeItIsStored`, `saveThenLoadReturnsExactlyTheSamePair`, `theFingerprintSurvivesSaveAndLoadUnchanged` |
+| Multiple independent pairs; duplicates never silently overwritten; explicit replace; identical fingerprints = same key | `multiplePairsAreStoredIndependently`, `aDuplicateNameIsNeverSilentlyOverwritten`, `anExplicitReplaceReplacesTheRecord`, `anIdenticalFingerprintIsReportedAsTheSameKey` |
+| Delete removes only that record and its persisted sealed bytes | `deletingOnePairLeavesTheOthersUntouched`, `deletionRemovesThePersistedPrivateMaterial` |
+| Saved pairs survive a restart (new collection, same storage + same keystore key) | `savedPairsSurviveANewCollectionOverTheSameStorage` |
+| Sealed at rest: storage carries neither PEM, only metadata | `storedBlobsDoNotCarryPlaintextPem` |
+| Damaged store degrades safely | `aDamagedStoreDegradesToAnEmptyCollectionInsteadOfCrashing` |
+| Session: start empty; generate → unsaved; regenerate replaces active only; save links; clear removes; load replaces; deleting the active's record unlinks but keeps the pair | the `RsaKeySession` tests |
+| 1.6.4 guarantees intact: explicit-action-only, matching pairs, parse, copy-half isolation | whole `RsaKeyPairGeneratorTest` run |
+
+Manual (no emulator in this environment — not performed here):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Generate a pair, switch to Base64, switch back | The same pair is still displayed (same fingerprint) |
+| 2 | Change the key size setting, open Settings and back, rotate | Pair unchanged; nothing regenerates |
+| 3 | Save key pair → name it → save again with the same name | Replace question; original stays until confirmed |
+| 4 | Save the same pair under a different name | "This key is already saved as …" |
+| 5 | Generate again → the saved list still shows the old pair; save the new pair under another name | Two independent records |
+| 6 | Load each record with an unsaved active pair | Replace question first; after loading, sections show exactly that record's keys |
+| 7 | Clear (with active pair) | Confirmation; empty state; saved list untouched |
+| 8 | Delete a saved pair | Confirmation; record gone; the other record survives; deleting the active's record keeps the pair on screen, now unsaved |
+| 9 | Kill and reopen the app | Saved list intact; active unsaved pair gone (by design); empty state until Generate/Load |
+| 10 | Restore defaults | Saved key pairs survive (dialog says so) |

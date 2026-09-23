@@ -36,9 +36,35 @@ internal fun dropTargetIndex(startIndex: Int, dragOffsetPx: Float, stepPx: Float
 }
 
 /**
+ * How much of a uniform-row list has been scrolled past the top of the viewport, in pixels.
+ *
+ * Auto-scroll decisions are made in *viewport* coordinates (what is on screen), while a row's slot
+ * and its drag offset live in *content* coordinates (distance from the very start of the list). For
+ * a list whose rows are all the same height - which the favourites list is - the distance already
+ * scrolled is exactly the height of the leading rows plus the partial offset of the first visible
+ * one. Comparing content coordinates against viewport limits instead is what made a downward drag
+ * in a scrolled list look like it was already past the bottom edge and start scrolling away.
+ *
+ * @param firstVisibleItemIndex index of the first visible row.
+ * @param firstVisibleItemOffsetPx how much of that row is already scrolled out of view.
+ * @param stepPx distance from one row's top to the next row's top (row height + gap).
+ */
+internal fun scrolledContentPx(firstVisibleItemIndex: Int, firstVisibleItemOffsetPx: Int, stepPx: Float): Float =
+    if (stepPx <= 0f || firstVisibleItemIndex < 0) 0f else firstVisibleItemIndex * stepPx + firstVisibleItemOffsetPx
+
+/**
+ * The dragged row's top edge in viewport coordinates: its slot in content coordinates, plus how far
+ * the finger has pulled it (including the auto-scroll compensation), minus everything the list has
+ * already scrolled past. This - not the content position - is what decides whether the row is near
+ * the visible edge.
+ */
+internal fun rowTopInViewport(slotContentTopPx: Float, dragOffsetPx: Float, scrolledPx: Float): Float =
+    slotContentTopPx + dragOffsetPx - scrolledPx
+
+/**
  * How far to scroll the list while the finger stays near an edge, in pixels per frame.
  *
- * @param rowTopPx top of the dragged row, in the list's content coordinates.
+ * @param rowTopPx top of the dragged row, in the viewport's coordinates (what is on screen).
  * @param rowHeightPx height of the dragged row.
  * @param viewportStartPx content coordinate of the viewport's top edge.
  * @param viewportHeightPx visible height of the list.

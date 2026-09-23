@@ -16,11 +16,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,12 +75,15 @@ fun SettingsScreen(
     onAccentSelected: (AccentOption) -> Unit,
     onAutoProcessChanged: (Boolean) -> Unit,
     onCopyConfirmationChanged: (Boolean) -> Unit,
+    onHapticsChanged: (Boolean) -> Unit,
     onClearTemporaryData: () -> Unit,
+    onRestoreDefaults: () -> Unit,
     versionName: String,
 ) {
     // The confirmation is a dialog, because "clear" used to happen silently and take the
     // favourites with it. Now the user sees exactly what goes and what stays before it does.
     var confirmingClear by remember { mutableStateOf(false) }
+    var confirmingRestore by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -184,6 +189,18 @@ fun SettingsScreen(
                 )
             }
 
+            // ------------------------------------------------------------- interaction
+            SectionCard {
+                SectionTitle(text = stringResource(R.string.settings_interaction))
+                Spacer(Modifier.height(Spacing.sm))
+                SwitchRow(
+                    title = stringResource(R.string.settings_haptics),
+                    subtitle = stringResource(R.string.settings_haptics_sub),
+                    checked = state.haptics,
+                    onCheckedChange = onHapticsChanged,
+                )
+            }
+
             // ---------------------------------------------------------------- storage
             // Its own card, separate from the privacy explanation: the two used to share one box,
             // which made "Clear temporary data" look like part of the privacy text.
@@ -241,6 +258,34 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = mutedTextColor,
                     modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+
+            // -------------------------------------------------------- restore defaults
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.Restore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_restore),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = Spacing.sm),
+                    )
+                }
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    text = stringResource(R.string.settings_restore_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                )
+                Spacer(Modifier.height(Spacing.sm))
+                TextAction(
+                    text = stringResource(R.string.settings_restore_action),
+                    onClick = { confirmingRestore = true },
                 )
             }
 
@@ -331,6 +376,52 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmingClear = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    if (confirmingRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmingRestore = false },
+            title = { Text(stringResource(R.string.restore_title)) },
+            text = {
+                Column {
+                    Text(
+                        text = stringResource(R.string.restore_removed),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.restore_removed_list),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = mutedTextColor,
+                        modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md),
+                    )
+                    Text(
+                        text = stringResource(R.string.restore_kept),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.restore_kept_list),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = mutedTextColor,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingRestore = false
+                        onRestoreDefaults()
+                    },
+                ) {
+                    Text(stringResource(R.string.restore_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingRestore = false }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
@@ -449,8 +540,17 @@ private fun SwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    // The whole row is the switch: one full-width, accessible target whose merged semantics read
+    // "title, subtitle, on/off" as a single control, instead of a small switch beside passive text.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .padding(vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -461,7 +561,8 @@ private fun SwitchRow(
                 color = mutedTextColor,
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        // The row carries the state and the click; the switch is the visual of that one state.
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

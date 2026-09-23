@@ -23,8 +23,11 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -36,15 +39,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -69,6 +75,7 @@ import com.texthub.app.ui.components.ToolMonogram
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.app.viewmodel.HubUiState
+import com.texthub.app.viewmodel.RsaVaultEvent
 import com.texthub.core.model.Direction
 import com.texthub.core.model.ParamKind
 import com.texthub.core.model.ParamSpec
@@ -86,6 +93,13 @@ fun MainScreen(
     onParamChange: (String, String) -> Unit,
     onInputChange: (String) -> Unit,
     onProcess: () -> Unit,
+    onGenerateKeys: () -> Unit,
+    onCopyValue: (String) -> Unit,
+    onSaveKey: (String, Boolean) -> Unit,
+    onLoadKey: (String) -> Unit,
+    onDeleteKey: (String) -> Unit,
+    onClearKey: () -> Unit,
+    onConsumeKeyEvent: () -> Unit,
     onCopy: () -> Unit,
     onSwap: () -> Unit,
     onShare: () -> Unit,
@@ -306,6 +320,7 @@ fun MainScreen(
                     }
                 }
 
+                if (!state.isRsaKeyGen) {
                 // ----------------------------------------------------------------- input
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -378,6 +393,47 @@ fun MainScreen(
                         modifier = Modifier.padding(start = Spacing.xs),
                     )
                 }
+                }
+
+                // --------------------------------------------------- the RSA key generator
+                // Its result has its own Public key / Private key / Key information sections and
+                // is created only through its own action - never through the generic flow.
+                if (state.isRsaKeyGen) {
+                    RsaKeyGenSections(
+                        state = state,
+                        snackbarHostState = snackbarHostState,
+                        onGenerate = onGenerateKeys,
+                        onCopy = onCopyValue,
+                        onSaveKey = onSaveKey,
+                        onLoadKey = onLoadKey,
+                        onDeleteKey = onDeleteKey,
+                        onClearKey = onClearKey,
+                        onConsumeEvent = onConsumeKeyEvent,
+                    )
+                }
+
+                // --------------------------------------------- Universal Decoder empty state
+                // Before anything has been typed, say what this tool is for instead of leaving the
+                // screen blank - two quiet lines in the app's usual style, never a dialog.
+                if (state.isUniversalDecoder && state.input.isBlank()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ud_empty_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = mutedTextColor,
+                        )
+                        Text(
+                            text = stringResource(R.string.ud_empty_examples),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedTextColor,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
+                    }
+                }
 
                 // ------------------------------------------------------------- analysis
                 // Only the Universal Decoder has anything to analyse, and only while there is input:
@@ -395,6 +451,9 @@ fun MainScreen(
                 }
 
                 // ----------------------------------------------------------------- output
+                // Hidden for the RSA key pair generator: its output is the key pair, which the
+                // dedicated sections above already present exactly once.
+                if (!state.isRsaKeyGen) {
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SectionTitle(
@@ -491,6 +550,7 @@ fun MainScreen(
                         }
                     }
                 }
+                }
 
                 // ---------------------------------------------------------- privacy note
                 Row(
@@ -508,6 +568,422 @@ fun MainScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The RSA Key Pair Generator's own sections, in the app's usual card language.
+ *
+ * The **active** pair is session state of its own (`HubUiState.rsaActive`): it is created only by
+ * the explicit Generate action, survives tool switches, settings changes and recomposition, and is
+ * replaced only by generating, loading or clearing it. Saving copies it into the encrypted saved
+ * collection under a user-chosen name; loading makes a saved pair active; deleting removes one
+ * saved record. Private material appears only in the Private key card and only for the active
+ * pair - the saved list shows name, size and fingerprint, never a key.
+ */
+@Composable
+private fun RsaKeyGenSections(
+    state: HubUiState,
+    snackbarHostState: SnackbarHostState,
+    onGenerate: () -> Unit,
+    onCopy: (String) -> Unit,
+    onSaveKey: (String, Boolean) -> Unit,
+    onLoadKey: (String) -> Unit,
+    onDeleteKey: (String) -> Unit,
+    onClearKey: () -> Unit,
+    onConsumeEvent: () -> Unit,
+) {
+    val context = LocalContext.current
+    val snackbarHostState = snackbarHostState
+
+    // Dialog state. The save dialog stays open while the replace question is on top of it, so a
+    // cancelled replace simply returns to the naming step.
+    var saveDialogVisible by remember { mutableStateOf(false) }
+    var pendingReplaceName by remember { mutableStateOf<String?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
+    var pendingLoadName by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteName by remember { mutableStateOf<String?>(null) }
+
+    // One completed vault operation at a time, acknowledged here exactly once.
+    LaunchedEffect(state.rsaEvent) {
+        when (val event = state.rsaEvent) {
+            is RsaVaultEvent.Saved -> {
+                snackbarHostState.showSnackbar(
+                    context.getString(
+                        if (event.replaced) R.string.msg_key_saved_replaced else R.string.msg_key_saved,
+                    )
+                )
+            }
+            is RsaVaultEvent.NameConflict -> pendingReplaceName = event.name
+            is RsaVaultEvent.SameKeyExists -> snackbarHostState.showSnackbar(
+                context.getString(R.string.msg_key_same_exists, event.name)
+            )
+            is RsaVaultEvent.LoadFailed -> snackbarHostState.showSnackbar(
+                context.getString(R.string.msg_key_load_failed)
+            )
+            is RsaVaultEvent.Failed -> snackbarHostState.showSnackbar(event.message)
+            null -> Unit
+        }
+        if (state.rsaEvent != null) onConsumeEvent()
+    }
+
+    val keys = state.rsaActive
+
+    // ------------------------------------------------------------- action / state card
+    SectionCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle(text = stringResource(R.string.rsa_title), modifier = Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.rsa_action_sub),
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedTextColor,
+            )
+        }
+        Spacer(Modifier.height(Spacing.sm))
+        when {
+            state.processing -> {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = Spacing.sm),
+                )
+                Text(
+                    text = stringResource(R.string.rsa_generating),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+            keys != null -> {
+                Text(
+                    text = stringResource(R.string.rsa_info_size, keys.bits),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.rsa_ready_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+            state.error != null -> ErrorBanner(message = state.error)
+            else -> Text(
+                text = stringResource(R.string.rsa_empty_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = mutedTextColor,
+            )
+        }
+        Spacer(Modifier.height(Spacing.md))
+        PrimaryAction(
+            text = stringResource(R.string.rsa_generate),
+            onClick = onGenerate,
+            enabled = !state.processing,
+        )
+        if (keys != null && !state.processing) {
+            Spacer(Modifier.height(Spacing.sm))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterHorizontally),
+            ) {
+                TextAction(
+                    text = stringResource(R.string.rsa_action_save),
+                    onClick = { saveDialogVisible = true },
+                )
+                TextAction(
+                    text = stringResource(R.string.rsa_action_clear),
+                    onClick = { confirmClear = true },
+                )
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ key information
+    if (keys != null) {
+        SectionCard {
+            SectionTitle(text = stringResource(R.string.rsa_info_title))
+            Spacer(Modifier.height(Spacing.sm))
+            Text(
+                text = stringResource(R.string.rsa_info_size, keys.bits),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(R.string.rsa_info_fingerprint),
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedTextColor,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+            // The fingerprint describes the public key only, so it may be read out and selected freely.
+            Text(
+                text = keys.fingerprint,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                ),
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        // ----------------------------------------------------------------------- public key
+        SectionCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle(text = stringResource(R.string.rsa_public_title), modifier = Modifier.weight(1f))
+                TextAction(
+                    text = stringResource(R.string.action_copy),
+                    onClick = { onCopy(keys.publicPem) },
+                    contentDescription = stringResource(R.string.cd_copy_public),
+                )
+            }
+            Text(
+                text = stringResource(R.string.rsa_public_helper),
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedTextColor,
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            HubTextField(
+                value = keys.publicPem,
+                onValueChange = {},
+                readOnly = true,
+                monospace = true,
+                minHeight = 120.dp,
+                maxLines = 8,
+            )
+        }
+
+        // ---------------------------------------------------------------------- private key
+        SectionCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle(text = stringResource(R.string.rsa_private_title), modifier = Modifier.weight(1f))
+                TextAction(
+                    text = stringResource(R.string.action_copy),
+                    onClick = { onCopy(keys.privatePem) },
+                    contentDescription = stringResource(R.string.cd_copy_private),
+                )
+            }
+            Text(
+                text = stringResource(R.string.rsa_private_helper),
+                style = MaterialTheme.typography.labelSmall,
+                color = mutedTextColor,
+            )
+            Text(
+                text = stringResource(R.string.rsa_private_warning),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            HubTextField(
+                value = keys.privatePem,
+                onValueChange = {},
+                readOnly = true,
+                monospace = true,
+                minHeight = 160.dp,
+                maxLines = 10,
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------ saved key pairs
+    SectionCard {
+        SectionTitle(text = stringResource(R.string.rsa_saved_title))
+        Spacer(Modifier.height(Spacing.sm))
+        if (state.rsaSavedKeys.isEmpty()) {
+            Text(
+                text = stringResource(R.string.rsa_saved_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = mutedTextColor,
+            )
+        } else {
+            state.rsaSavedKeys.forEach { saved ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = saved.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = stringResource(R.string.rsa_info_size, saved.bits),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedTextColor,
+                        )
+                        Text(
+                            text = saved.fingerprint,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            ),
+                            color = mutedTextColor,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.rsa_saved_created,
+                                java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                                    .format(java.util.Date(saved.createdAt)),
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedTextColor,
+                        )
+                    }
+                    TextAction(
+                        text = stringResource(R.string.rsa_saved_load),
+                        // An unsaved active pair must not be lost to a stray tap: the question is
+                        // asked here, and the load itself happens on confirmation.
+                        onClick = {
+                            if (state.rsaSavedName == null && keys != null) {
+                                pendingLoadName = saved.name
+                            } else {
+                                onLoadKey(saved.name)
+                            }
+                        },
+                    )
+                    TextAction(
+                        text = stringResource(R.string.rsa_saved_delete),
+                        onClick = { pendingDeleteName = saved.name },
+                    )
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------ dialogs
+    if (saveDialogVisible) {
+        var name by remember { mutableStateOf("") }
+        var showBlankError by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { saveDialogVisible = false; showBlankError = false },
+            title = { Text(stringResource(R.string.rsa_save_title)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it; showBlankError = false },
+                        label = { Text(stringResource(R.string.rsa_save_name_label)) },
+                        placeholder = { Text(stringResource(R.string.rsa_save_name_hint)) },
+                        singleLine = true,
+                        isError = showBlankError,
+                        supportingText = if (showBlankError) {
+                            { Text(stringResource(R.string.rsa_save_name_blank)) }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmed = name.trim()
+                        if (trimmed.isEmpty()) {
+                            showBlankError = true
+                        } else {
+                            saveDialogVisible = false
+                            onSaveKey(trimmed, false)
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.rsa_save_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveDialogVisible = false; showBlankError = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    pendingReplaceName?.let { conflictName ->
+        AlertDialog(
+            onDismissRequest = { pendingReplaceName = null },
+            title = { Text(stringResource(R.string.rsa_save_replace_title)) },
+            text = { Text(stringResource(R.string.rsa_save_replace_message, conflictName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingReplaceName = null
+                        saveDialogVisible = false
+                        onSaveKey(conflictName, true)
+                    },
+                ) {
+                    Text(stringResource(R.string.rsa_save_replace_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingReplaceName = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text(stringResource(R.string.rsa_clear_title)) },
+            text = { Text(stringResource(R.string.rsa_clear_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        onClearKey()
+                    },
+                ) {
+                    Text(stringResource(R.string.rsa_clear_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    pendingLoadName?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingLoadName = null },
+            title = { Text(stringResource(R.string.rsa_load_title)) },
+            text = { Text(stringResource(R.string.rsa_load_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingLoadName = null
+                        onLoadKey(name)
+                    },
+                ) {
+                    Text(stringResource(R.string.rsa_load_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLoadName = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    pendingDeleteName?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteName = null },
+            title = { Text(stringResource(R.string.rsa_delete_title)) },
+            text = { Text(stringResource(R.string.rsa_delete_message, name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteName = null
+                        onDeleteKey(name)
+                    },
+                ) {
+                    Text(stringResource(R.string.rsa_delete_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteName = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 }
 

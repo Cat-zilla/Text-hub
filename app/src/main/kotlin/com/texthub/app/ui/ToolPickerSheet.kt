@@ -85,6 +85,7 @@ private enum class PickerFilter { ALL, FAVORITES, RECENT }
 @Composable
 fun ToolPickerSheet(
     sheetState: SheetState,
+    hapticsEnabled: Boolean,
     currentToolId: String,
     favorites: List<String>,
     recents: List<String>,
@@ -95,6 +96,15 @@ fun ToolPickerSheet(
 ) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(PickerFilter.ALL) }
+    val haptics = LocalHapticFeedback.current
+
+    // Every favourite toggle - in the search list, the recents and the favourites - answers with
+    // the same light tick, and only when the user kept haptics on. Compose's haptics go through
+    // the view's, so the system haptic setting is respected on top of this preference.
+    val toggleFavoriteWithTick: (String) -> Unit = { id ->
+        if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onToggleFavorite(id)
+    }
     // Hoisted, so the scroll position survives recomposition (toggling a favourite redraws the list).
     val listState = rememberLazyListState()
 
@@ -251,6 +261,7 @@ fun ToolPickerSheet(
                 FavoritesToolList(
                     metas = tools,
                     currentToolId = currentToolId,
+                    hapticsEnabled = hapticsEnabled,
                     // Reordering is only offered on the plain favourites list. While a search is
                     // active the rows shown are a subset, and a drag would be a guess at where the
                     // hidden rows belong. The move itself is stored by id, so even the favourites
@@ -258,7 +269,7 @@ fun ToolPickerSheet(
                     reorderable = query.isBlank(),
                     favorites = favorites,
                     onSelect = onSelect,
-                    onToggleFavorite = onToggleFavorite,
+                    onToggleFavorite = toggleFavoriteWithTick,
                     onMove = onMoveFavorite,
                     listState = listState,
                     modifier = Modifier
@@ -295,7 +306,7 @@ fun ToolPickerSheet(
                                 selected = meta.id == currentToolId,
                                 favorite = meta.id in favorites,
                                 onClick = { onSelect(meta.id) },
-                                onToggleFavorite = { onToggleFavorite(meta.id) },
+                                onToggleFavorite = { toggleFavoriteWithTick(meta.id) },
                             )
                         }
                     }
@@ -336,6 +347,7 @@ private fun FavoritesToolList(
     metas: List<ToolMeta>,
     currentToolId: String,
     reorderable: Boolean,
+    hapticsEnabled: Boolean,
     favorites: List<String>,
     onSelect: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
@@ -369,6 +381,20 @@ private fun FavoritesToolList(
     val dragged = draggingId
     val startIndex = if (dragged == null) -1 else displayedIds.indexOf(dragged)
 
+    // Event-time reads for everything the gesture handlers and the gap calculation use.
+    //
+    // The pointerInput block below only restarts when its *keys* change (meta.id, reorderable) -
+    // recomposition swaps in a new lambda, but with equal keys the running handler keeps the one it
+    // was started with, along with whatever local values it captured. At the first composition
+    // rowHeight is still 0, so a captured `stepPx` would be just the gap between rows for the whole
+    // life of the row: every real drag would read as dozens of rows and the drop would land at the
+    // end of the list. Reading through `rememberUpdatedState` (and the delegated state above) gives
+    // the handlers the values of *this* moment, which is what the arithmetic assumes.
+    val currentStepPx by rememberUpdatedState(stepPx)
+    val currentDisplayedIds by rememberUpdatedState(displayedIds)
+    val currentEdgePx by rememberUpdatedState(edgePx)
+    val currentMaxScrollStepPx by rememberUpdatedState(maxScrollStepPx)
+
     // The offset changes on every pointer event, but the *gap* only changes when the target slot
     // does. Keeping the resolution behind derivedStateOf means the rows are recomposed when they
     // really move - not sixty times a second while nothing changes - which is what keeps the drag
@@ -376,22 +402,24 @@ private fun FavoritesToolList(
     // following the finger costs a redraw rather than a recomposition.
     val shifts by remember {
         derivedStateOf {
+            // Reads go through the remembered State holders (not the composition's locals), so the
+            // gap is computed from the current rows, the current step and the current offset.
             val moving = draggingId
             if (moving == null) {
-                List(displayedIds.size) { 0 }
+                List(currentDisplayedIds.size) { 0 }
             } else {
-                val from = displayedIds.indexOf(moving)
-                if (from < 0 || stepPx <= 0f) {
-                    List(displayedIds.size) { 0 }
+                val from = currentDisplayedIds.indexOf(moving)
+                if (from < 0 || currentStepPx <= 0f) {
+                    List(currentDisplayedIds.size) { 0 }
                 } else {
                     val to = resolveDragDrop(
                         stored = currentFavorites,
-                        displayed = displayedIds,
+                        displayed = currentDisplayedIds,
                         draggedId = moving,
                         dragOffsetPx = dragOffset,
-                        stepPx = stepPx,
+                        stepPx = currentStepPx,
                     )?.targetIndex ?: from
-                    shiftRows(displayedIds.size, from, to)
+                    shiftRows(currentDisplayedIds.size, from, to)
                 }
             }
         }
@@ -498,38 +526,57 @@ private fun FavoritesToolList(
                                 settleFrom = 0f
                                 dragOffset = 0f
                                 edgeScroll = 0f
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (hapticsEnabled) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
                             },
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragOffset += amount.y
+                                val step = currentStepPx
                                 val from = currentIds.indexOf(meta.id)
-                                if (from < 0 || rowHeight <= 0f) {
+                                if (from < 0 || rowHeight <= 0f || step <= 0f) {
                                     // Nothing to compute with: end the drag rather than guess.
                                     draggingId = null
                                     dragOffset = 0f
                                     edgeScroll = 0f
                                     return@detectDragGesturesAfterLongPress
                                 }
+                                // The edge decision is made where the user is looking: the row's
+                                // position on screen, not its distance from the start of the list.
+                                // With the content position alone, a list that had been scrolled
+                                // always looked "past the bottom edge" and started scrolling away
+                                // under the finger - which is how a downward drag could end up at
+                                // the end of the list without the finger ever going there.
+                                val scrolled = scrolledContentPx(
+                                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                                    firstVisibleItemOffsetPx = listState.firstVisibleItemScrollOffset,
+                                    stepPx = step,
+                                )
                                 val info = listState.layoutInfo
                                 edgeScroll = autoScrollDelta(
-                                    rowTopPx = from * stepPx + dragOffset,
+                                    rowTopPx = rowTopInViewport(
+                                        slotContentTopPx = from * step,
+                                        dragOffsetPx = dragOffset,
+                                        scrolledPx = scrolled,
+                                    ),
                                     rowHeightPx = rowHeight,
                                     viewportStartPx = info.viewportStartOffset.toFloat(),
                                     viewportHeightPx = (info.viewportEndOffset - info.viewportStartOffset).toFloat(),
-                                    edgePx = edgePx,
-                                    maxStepPx = maxScrollStepPx,
+                                    edgePx = currentEdgePx,
+                                    maxStepPx = currentMaxScrollStepPx,
                                 )
                             },
                             onDragEnd = {
                                 val id = draggingId
-                                if (id != null && stepPx > 0f) {
+                                val step = currentStepPx
+                                if (id != null && step > 0f) {
                                     val resolved = resolveDragDrop(
                                         stored = currentFavorites,
                                         displayed = currentIds,
                                         draggedId = id,
                                         dragOffsetPx = dragOffset,
-                                        stepPx = stepPx,
+                                        stepPx = step,
                                     )
                                     val from = currentIds.indexOf(id)
                                     if (resolved != null && from >= 0) {
@@ -537,7 +584,7 @@ private fun FavoritesToolList(
                                         // The stored order and the position on screen come from the
                                         // same resolution, so they cannot disagree.
                                         if (rowsMoved != 0) currentOnMove(id, resolved.anchorId)
-                                        settleFrom = settleOffsetPx(dragOffset, rowsMoved, stepPx)
+                                        settleFrom = settleOffsetPx(dragOffset, rowsMoved, step)
                                         settlingId = id
                                     }
                                 }
