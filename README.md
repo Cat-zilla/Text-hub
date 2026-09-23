@@ -380,59 +380,9 @@ Notes:
   succeed on 2 GB boxes. On a larger machine raise `org.gradle.jvmargs` and `org.gradle.workers.max`.
 * Lint runs with `abortOnError = true`; warnings are part of the build.
 
-### Pre-built APKs
-
-| File | Size | md5 |
-| --- | --- | --- |
-| `apk/TextHub-1.5.1-release.apk` (signed) | 9,566,976 B | `9f129cee14f3e126f29881184b598414` |
-| `apk/TextHub-1.5.1-debug.apk` | 14,371,016 B | `c62dc3ef9d80c4ae727bbc213af478e6` |
-
-Both report `versionName 1.5.1`, `versionCode 8`, `minSdk 24`, `targetSdk 34`, and declare **no
-permissions** other than Android's own `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
-`TextHub-1.5.1-source.zip` contains the complete source project, documentation, Gradle configuration,
-tests, resources, icons, themes and the release keystore, so updates can be signed with the same
-key.
-
 ---
 
-## 8. Signing and updates
-
-**Signing material is kept out of the source.** The release keystore and its credentials travel in a
-separate private archive (`TextHub-<version>-signing-files.zip`) together with
-`docs/SIGNING.md`; that archive must never be uploaded, attached or committed, and it is never part
-of the published source archive. No password is written in any Gradle file — the build reads them
-from Gradle properties, the environment or a local `keystore.properties`:
-
-```bash
-./gradlew :app:assembleRelease \
-  -PtexthubStorePassword=… -PtexthubKeyPassword=…     # or TEXTHUB_STORE_PASSWORD / TEXTHUB_KEY_PASSWORD
-```
-
-With none of them present (a plain `git clone`), the release variant is simply built **unsigned**
-instead of failing, so the source archive stays buildable for everybody. The release APK published
-with this version was signed with the project's own keystore:
-
-* Certificate SHA-256: `CC:69:D4:D0:50:EC:FA:9F:7A:94:B9:6E:9D:EE:30:5F:C4:4B:7D:B8:CA:17:BB:E1:B1:93:CD:B4:18:29:82:B1`
-* Valid until 2056-09-13 (RSA 2048-bit, `SHA256withRSA`), application ID `com.texthub.app`
-
-**Two rules for every update:** raise `versionCode` and never change `applicationId` or the signing
-key. Android then treats the new build as an update and keeps user preferences in place.
-
-```bash
-./gradlew :core:test
-./gradlew :app:assembleRelease
-apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
-adb install -r app/build/outputs/apk/release/app-release.apk
-```
-
-Back up the keystore in at least two secure places before publishing anything: without it, no
-update can ever be shipped to that installation. Passwords, backup advice (including a
-password-manager Base64 trick), manual signing and how to switch to your own key are documented in
-[`docs/SIGNING.md`](docs/SIGNING.md).
-
----
-
-## 9. Testing
+## 8. Testing
 
 `./gradlew :core:test` runs **379 unit tests** in `core/src/test/kotlin/com/texthub/core/`, and
 `./gradlew :app:testDebugUnitTest` adds **39** for the app layer (418 in total, all green):
@@ -465,7 +415,7 @@ device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`doc
 
 ---
 
-## 10. Privacy behaviour
+## 9. Privacy behaviour
 
 * **No permissions.** The manifest declares no `uses-permission` entries — the `INTERNET`
   permission is explicitly stripped with `tools:node="remove"`, so no build of the app can hold it,
@@ -488,7 +438,7 @@ Details: [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
 ---
 
-## 11. Security notes
+## 10. Security notes
 
 * **No logging.** There is no `android.util.Log`, `println` or `printStackTrace` in the project.
   Plaintext, keys, passwords and ciphertext are never written anywhere.
@@ -513,7 +463,7 @@ Details: [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
 ---
 
-## 12. Theming, accent colours and accessibility
+## 11. Theming, accent colours and accessibility
 
 **Themes.** System (follows the OS), Dark (default look, deep slate), AMOLED (pure black, also for
 dark mode), Light. One restrained design language, Material 3 typography and a shared spacing
@@ -541,7 +491,7 @@ border, never by colour alone.
 
 ---
 
-## 13. Project layout
+## 12. Project layout
 
 ```
 TextHub/
@@ -595,32 +545,7 @@ TextHub/
 
 ---
 
-## 14. Known limitations
-
-* **R8 shrinking is opt-in** (`-PenableR8=true`) because the default build target here is a small
-  machine. ProGuard rules are in place; expect roughly half the APK size with it on.
-* **The release keystore is bundled** with the project so updates can be signed with the same key.
-  Never publish the zip containing it, and back the keystore up before you ship anything.
-* **No on-device UI run is automated here.** The algorithms are covered by 246 unit tests and the
-  app builds clean, but the checklist in `docs/QA_CHECKLIST.md` is the script for a final manual
-  pass on real hardware (emulators are not available in the build environment).
-* **ChaCha20-Poly1305 needs Android 9+.** On older devices the tool says so and points at AES-GCM
-  instead of silently falling back to something weaker.
-* **Classical ciphers drop what their alphabets cannot carry** (Playfair, Bacon, Hill, Trifid,
-  ADFGX and friends keep letters — and sometimes digits — only). Each tool documents this in its
-  info sheet.
-* **RSA-OAEP cannot encrypt long text on its own**, which is exactly why the hybrid construction is
-  used; the private key is the single point of failure for reading messages.
-* **The Universal Decoder only knows the formats Text Hub supports.** It identifies and processes
-  supported Text Hub formats where the format can be determined reliably; it cannot decrypt
-  arbitrary unknown encrypted data, it does not recover lost passwords, and it deliberately reports
-  "no supported format recognised" instead of guessing.
-* **Text Hub is not audited software**, and it is not a replacement for a password manager or a
-  messenger built for secrecy.
-
----
-
-## 15. Licensing and third-party notices
+## 13. Licensing and third-party notices
 
 The project ships no third-party runtime libraries other than AndroidX/Jetpack Compose (Apache
 License 2.0), Kotlin (Apache License 2.0) and the Android SDK (Apache License 2.0); their licences
