@@ -66,6 +66,9 @@ import com.texthub.app.R
 import com.texthub.app.ui.components.ClassificationChip
 import com.texthub.app.ui.components.ToolMonogram
 import com.texthub.app.ui.theme.Spacing
+import com.texthub.app.ui.theme.LocalUiSettings
+import com.texthub.app.ui.theme.decorativeDuration
+import com.texthub.app.ui.theme.decorativeSpec
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.core.ToolRegistry
 import com.texthub.core.model.ToolCategory
@@ -444,10 +447,11 @@ private fun FavoritesToolList(
     }
 
     // The settle step: snap to the leftover distance, animate it away, then forget the row.
+    val settleMs = decorativeDuration(160)
     LaunchedEffect(settlingId, settleFrom) {
         if (settlingId != null) {
             settleAnimation.snapTo(settleFrom)
-            settleAnimation.animateTo(0f, tween(durationMillis = 160, easing = LinearOutSlowInEasing))
+            if (settleMs <= 0) settleAnimation.snapTo(0f) else settleAnimation.animateTo(0f, tween(durationMillis = settleMs, easing = LinearOutSlowInEasing))
             settlingId = null
             settleFrom = 0f
         }
@@ -480,7 +484,7 @@ private fun FavoritesToolList(
             val shiftTarget = if (moving || draggingId == null) 0f else (shifts.getOrElse(index) { 0 }).toFloat() * stepPx
             val shift by animateFloatAsState(
                 targetValue = if (draggingId != null) shiftTarget else 0f,
-                animationSpec = tween(durationMillis = 140),
+                animationSpec = decorativeSpec(140),
                 label = "favouritesRowShift",
             )
             Surface(
@@ -651,7 +655,9 @@ private fun ToolRow(
                     .padding(end = 2.dp),
             )
         }
-        ToolMonogram(glyph = meta.glyph, highlighted = selected)
+        // "Show tool icons" hides the monogram in the list only; the name and classification chip
+        // carry the meaning, and the row's semantics do not depend on the glyph.
+        if (LocalUiSettings.current.showToolIcons) ToolMonogram(glyph = meta.glyph, highlighted = selected)
         Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.md)) {
             Text(
                 text = meta.name,

@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
             HubApp(
                 viewModel = viewModel,
                 versionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE,
+                buildType = BuildConfig.BUILD_TYPE,
             )
         }
     }

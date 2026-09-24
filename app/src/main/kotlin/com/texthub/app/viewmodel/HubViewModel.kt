@@ -12,7 +12,9 @@ import com.texthub.core.ToolRegistry
 import com.texthub.core.defaultParams
 import com.texthub.core.crypto.RsaKeyGen
 import com.texthub.core.detector.Diagnosis
+import com.texthub.core.detector.SecretKind
 import com.texthub.core.detector.UniversalDecoder
+import com.texthub.core.detector.secretKind
 import com.texthub.core.keys.RsaKeyCollection
 import com.texthub.core.keys.RsaKeySession
 import com.texthub.core.keys.SaveResult
@@ -27,6 +29,7 @@ import com.texthub.core.model.TextStats
 import com.texthub.core.model.ToolMeta
 import com.texthub.core.model.computeStats
 import com.texthub.core.processors.RsaKeyGenProcessor
+import com.texthub.core.prefs.UiSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -45,6 +48,8 @@ sealed class RsaVaultEvent {
     data class SameKeyExists(val name: String) : RsaVaultEvent()
     data class LoadFailed(val name: String) : RsaVaultEvent()
     data class Failed(val message: String) : RsaVaultEvent()
+    /** "Clear saved RSA keys" finished; [count] records were removed (0 when there were none). */
+    data class VaultCleared(val count: Int) : RsaVaultEvent()
 }
 
 data class HubUiState(
@@ -90,6 +95,16 @@ data class HubUiState(
     val rsaSavedKeys: List<SavedRsaKeyMeta> = emptyList(),
     /** One completed save/load/delete event for the UI to acknowledge (dialogs, snackbars). */
     val rsaEvent: RsaVaultEvent? = null,
+    /**
+     * The saved record whose key currently fills the Universal Decoder's key field, or null while
+     * that field is empty or holds a key the user typed or pasted. Session state only: it names a
+     * record, it never carries key material, and it is dropped with the field itself.
+     */
+    val analysisSavedKeyName: String? = null,
+    /** The 1.7.0 settings (appearance, accessibility, security, advanced), persisted as preferences. */
+    val settings: UiSettings = UiSettings.DEFAULT,
+    /** How long the last processing run took, for the optional "Show processing time" line. */
+    val lastDurationMs: Long? = null,
 ) {
     val meta: ToolMeta get() = ToolRegistry.metaOf(toolId)
     val hasOutput: Boolean get() = output.isNotEmpty() || error != null
@@ -160,7 +175,66 @@ data class HubUiState(
 
     /** True when there is a decoded result to analyse once more. */
     val canAnalyseAgain: Boolean get() = isUniversalDecoder && output.isNotEmpty() && error == null
+
+    /** The Universal Decoder's key/password field value (empty for every other tool). */
+    val analysisSecret: String
+        get() = if (isUniversalDecoder) params[UniversalDecoder.PARAM_SECRET].orEmpty() else ""
+
+    /**
+     * The kind of secret the current analysis is about (password, AES key, RSA private key...), read
+     * from the diagnosis - i.e. from the registered tool of the detected format - or null when no
+     * secret is involved. This is what decides the wording of the key field.
+     */
+    val analysisSecretKind: SecretKind?
+        get() = if (isUniversalDecoder) analysis?.secretKind else null
+
+    /**
+     * True when the Universal Decoder's secret field should be the RSA key editor (multi-line PEM,
+     * clear and saved-key actions) instead of the password editor: the detected payload needs an
+     * RSA key, or the field already holds a PEM block (so the editor does not collapse back to a
+     * single masked line while the input is being changed). Passwords and symmetric keys are not
+     * affected.
+     */
+    val analysisUsesRsaKeyEditor: Boolean
+        get() = isUniversalDecoder && (analysisSecretKind?.isRsaKey == true || looksLikePemBlock(analysisSecret))
+
+    /** True when the RSA key field holds a saved-vault key rather than a typed/pasted one. */
+    val analysisUsesSavedKey: Boolean get() = analysisSavedKeyName != null && analysisSecret.isNotEmpty()
 }
+
+/**
+ * Cheap structural check (a prefix comparison, no parsing) used only to keep the RSA key editor in
+ * place while a PEM block is in the field. It never decides anything cryptographic.
+ */
+fun looksLikePemBlock(value: String): Boolean = value.trimStart().startsWith("-----BEGIN ")
+
+/**
+ * Pure state transition for a change of the Universal Decoder's key field, kept separate so the
+ * rules can be unit tested without Android:
+ *
+ *  * the value is stored exactly as given - nothing is trimmed, re-wrapped or truncated, so a
+ *    multi-line PEM reaches the processor unchanged;
+ *  * a value that comes from the saved-key collection is labelled with the record's name;
+ *  * any *other* change of the value (typing, pasting, clearing) makes the field a manually
+ *    supplied key again: the label is dropped, the saved record itself is never touched;
+ *  * the detected input text is not part of this transition at all - changing or clearing the key
+ *    never changes the ciphertext.
+ */
+fun applyAnalysisSecret(state: HubUiState, value: String, savedKeyName: String? = null): HubUiState {
+    val previous = state.params[UniversalDecoder.PARAM_SECRET].orEmpty()
+    val name = when {
+        savedKeyName != null -> savedKeyName
+        value != previous -> null
+        else -> state.analysisSavedKeyName
+    }
+    return state.copy(
+        params = state.params + (UniversalDecoder.PARAM_SECRET to value),
+        analysisSavedKeyName = name,
+    )
+}
+
+/** Clears only the Universal Decoder's key field; the input, the output and the vault stay. */
+fun clearAnalysisSecret(state: HubUiState): HubUiState = applyAnalysisSecret(state, "", savedKeyName = null)
 
 /**
  * Pure state transition for the Swap action, kept separate so it can be unit tested:
@@ -201,9 +275,18 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             favorites = prefs.favorites(),
             recents = prefs.recents(),
             temporaryDataSize = prefs.temporaryDataSize(),
+            settings = prefs.uiSettings,
         )
     )
     val uiState: StateFlow<HubUiState> = _uiState.asStateFlow()
+
+    /**
+     * Sensitive parameters kept for the session while "Clear sensitive fields when leaving a tool"
+     * is OFF: tool id -> its sensitive values. Memory only, never written anywhere, dropped by the
+     * background-clear and by every reset. Empty while the setting is ON (the default), which is
+     * the behaviour the app always had.
+     */
+    private val sessionSecrets = mutableMapOf<String, Map<String, String>>()
 
     private var processJob: Job? = null
 
@@ -256,7 +339,14 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             spec != null && !spec.sensitive && !spec.sessionOnly && value.isNotEmpty() &&
                 processor.meta.validateParams(mapOf(key to value)).none { it.key == key }
         }
-        val merged = defaults + saved
+        val previous = _uiState.value
+        if (!previous.settings.clearSecretsOnToolSwitch) {
+            // Keep the tool's secrets for this session only; the default (ON) never reaches here.
+            val secrets = previous.meta.sensitiveValues(previous.params)
+            if (secrets.isEmpty()) sessionSecrets.remove(previous.toolId) else sessionSecrets[previous.toolId] = secrets
+        }
+        val restoredSecrets = if (previous.settings.clearSecretsOnToolSwitch) emptyMap() else sessionSecrets[toolId].orEmpty()
+        val merged = defaults + saved + restoredSecrets
         _uiState.update {
             it.copy(
                 toolId = toolId,
@@ -265,6 +355,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 error = null,
                 outputStats = TextStats(0, 0, 0),
                 analysis = null,
+                analysisSavedKeyName = null,
                 direction = Direction.ENCODE,
             ).withValidatedParams()
         }
@@ -321,15 +412,55 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setParam(key: String, value: String) {
-        _uiState.update { it.copy(params = it.params + (key to value)).withValidatedParams() }
+        _uiState.update { state ->
+            if (state.isUniversalDecoder && key == UniversalDecoder.PARAM_SECRET) {
+                // The key field: stored verbatim (a multi-line PEM included); a value the user
+                // typed or pasted is a manual key, whatever filled the field before.
+                applyAnalysisSecret(state, value).withValidatedParams()
+            } else {
+                state.copy(params = state.params + (key to value)).withValidatedParams()
+            }
+        }
         persistParams()
         if (_uiState.value.autoProcess) process()
+    }
+
+    /**
+     * Fills the Universal Decoder's key field with one saved RSA key pair - the one the user chose,
+     * and only that one. Exactly that record is decrypted through the existing collection; the
+     * key is handed to the same parameter the pasted key would use, so the processing path is the
+     * one path there is. Nothing is written back: the collection is unchanged, the RSA key pair
+     * generator's active pair is unchanged, and the field is session state like any pasted key.
+     */
+    fun useSavedRsaKeyForAnalysis(name: String) {
+        if (!_uiState.value.isUniversalDecoder) return
+        viewModelScope.launch {
+            val pair = withContext(Dispatchers.Default) { keyCollection.load(name) }
+            if (pair == null) {
+                _uiState.update { it.copy(rsaEvent = RsaVaultEvent.LoadFailed(name)) }
+                return@launch
+            }
+            _uiState.update { state ->
+                if (!state.isUniversalDecoder) return@update state
+                // Decrypting needs the private half; a public-key operation would take the other.
+                val pem = if (state.analysisSecretKind == SecretKind.PUBLIC_KEY) pair.publicPem else pair.privatePem
+                applyAnalysisSecret(state, pem, savedKeyName = name).withValidatedParams()
+            }
+            process(immediate = true)
+        }
+    }
+
+    /** Clears the Universal Decoder's key field only; the detected input and the vault stay. */
+    fun clearAnalysisKey() {
+        if (!_uiState.value.isUniversalDecoder) return
+        _uiState.update { clearAnalysisSecret(it).withValidatedParams() }
+        process(immediate = true)
     }
 
     /** Restores every parameter of the current tool to its default value. */
     fun resetParams() {
         val processor = ToolRegistry.get(_uiState.value.toolId)
-        _uiState.update { it.copy(params = processor.defaultParams()).withValidatedParams() }
+        _uiState.update { it.copy(params = processor.defaultParams(), analysisSavedKeyName = null).withValidatedParams() }
         // The stored copy is dropped too, so a reset is not undone by the next launch.
         prefs.saveParams(_uiState.value.toolId, emptyMap())
         process(immediate = true)
@@ -558,6 +689,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 outputStats = outcome.second,
                 analysis = outcome.third,
                 processing = false,
+                lastDurationMs = if (outcome.first.error == null) outcome.first.durationMs else null,
             )
         }
     }
@@ -625,6 +757,73 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         prefs.haptics = enabled
     }
 
+    // ------------------------------------------------------------- 1.7.0 settings round
+
+    /** Changes one or more of the [UiSettings]; the whole value is persisted as preferences. */
+    fun updateSettings(transform: (UiSettings) -> UiSettings) {
+        val next = transform(_uiState.value.settings)
+        _uiState.update { it.copy(settings = next) }
+        prefs.uiSettings = next
+        if (next.clearSecretsOnToolSwitch) sessionSecrets.clear()
+    }
+
+    /**
+     * Clears transient sensitive state only: the sensitive parameters of the tool on screen
+     * (passwords, keys, the Universal Decoder's key field), the session copies kept while
+     * "clear when leaving a tool" is off, and the saved-key label. The input text, the output, the
+     * RSA key pair generator's active pair and the saved-key collection are not touched.
+     */
+    fun clearSensitiveFields() {
+        sessionSecrets.clear()
+        _uiState.update { state ->
+            val cleared = state.meta.withSensitiveCleared(state.params)
+            if (cleared == state.params && state.analysisSavedKeyName == null) return@update state
+            state.copy(params = cleared, analysisSavedKeyName = null).withValidatedParams()
+        }
+        process(immediate = true)
+    }
+
+    /** The activity went to the background (ON_STOP): honour "Clear sensitive fields when app goes to background". */
+    fun onAppBackground() {
+        if (_uiState.value.settings.clearSecretsOnBackground) clearSensitiveFields()
+    }
+
+    /** "Reset favourites": the favourites and their order, nothing else. Confirmed by the UI first. */
+    fun resetFavorites() {
+        prefs.clearFavorites()
+        _uiState.update { it.copy(favorites = emptyList()) }
+    }
+
+    /**
+     * "Clear saved RSA keys": empties the encrypted collection. Only this explicit, separately
+     * confirmed action does so - no other reset touches the vault. The active pair on screen stays
+     * (it becomes unsaved, as when its record is deleted); safe when the collection is already empty.
+     */
+    fun clearSavedRsaKeys() {
+        viewModelScope.launch {
+            val removed = withContext(Dispatchers.Default) {
+                try { keyCollection.deleteAll() } catch (e: CancellationException) { throw e } catch (t: Throwable) { 0 }
+            }
+            applySession(keySession.copy(savedName = null))
+            refreshSavedKeys()
+            _uiState.update { it.copy(rsaEvent = RsaVaultEvent.VaultCleared(removed)) }
+        }
+    }
+
+    /**
+     * "Clear everything": preferences (back to defaults), remembered tool settings, favourites,
+     * saved RSA keys, the active pair, the text on screen and every transient secret - all of Text
+     * Hub's own managed data, and nothing outside it. Confirmed twice by the UI first.
+     */
+    fun clearEverything() {
+        restoreDefaults()
+        resetFavorites()
+        clearSensitiveFields()
+        applySession(keySession.clear())
+        clearInput()
+        clearSavedRsaKeys()
+    }
+
     /**
      * "Restore defaults": every user-configurable preference returns to its out-of-the-box value.
      * Favourites and their order are kept - the documented behaviour of every reset in this app -
@@ -635,8 +834,10 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         // Saved RSA key pairs are user-created data, not a preference: they live in their own
         // encrypted store and survive this reset, exactly like the favourites do.
         prefs.restoreDefaults()
+        sessionSecrets.clear()
         _uiState.update {
             it.copy(
+                settings = UiSettings.DEFAULT,
                 theme = AppTheme.SYSTEM,
                 accent = AccentOption.TEAL,
                 autoProcess = true,
@@ -644,6 +845,9 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 haptics = true,
                 recents = emptyList(),
                 params = ToolRegistry.get(it.toolId).defaultParams(),
+                // A key in the Universal Decoder's field is transient session state and goes with
+                // the parameters; the saved collection it may have come from is not touched.
+                analysisSavedKeyName = null,
                 temporaryDataSize = prefs.temporaryDataSize(),
             ).withValidatedParams()
         }
@@ -667,6 +871,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 recents = emptyList(),
                 params = ToolRegistry.get(it.toolId).defaultParams(),
                 analysis = null,
+                analysisSavedKeyName = null,
                 temporaryDataSize = prefs.temporaryDataSize(),
             ).withValidatedParams()
         }

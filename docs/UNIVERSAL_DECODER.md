@@ -117,6 +117,17 @@ SHA-256 digest — but a length alone proves nothing", and it is **not** decoded
 
 * **One secret, only when it is needed.** If the payload says it is encrypted, the analysis stops,
   names the format and the *kind* of secret it needs (password, raw key, RSA private key) and waits.
+* **RSA key material is not a password (1.6.6).** When the detected format needs an RSA key, the
+  key field becomes the multi-line PEM editor: the complete `-----BEGIN PRIVATE KEY-----` block is
+  pasted whole (line breaks preserved, no length cap, nothing trimmed or re-wrapped) and reaches the
+  existing RSA tool unchanged - the same `RsaPem` parser, the same formats (PKCS#8 private, X.509
+  public). The label says which key the operation needs (*RSA private key* for decryption). *Clear*
+  empties the key only; the ciphertext stays. *Use saved key* lists the named key pairs of the
+  existing encrypted collection (name, size, fingerprint, date - never contents); choosing one
+  decrypts exactly that record and fills the field with it, labelled "Using saved key: …". Editing
+  the field afterwards makes it a manual key again; the saved record is never modified, and a
+  pasted key is never saved. The decoder does not scan the collection and never tries more than
+  the one key the user supplied.
 * **Nothing is guessed, tried or brute-forced.** There is no password list, no dictionary, no
   "try the obvious ones", and no silent attempt with an empty password.
 * **Parameters come from the payload, not from the user.** The key size recorded in a Text Hub

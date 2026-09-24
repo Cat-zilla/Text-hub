@@ -6,6 +6,7 @@ import com.texthub.app.ui.theme.AppTheme
 import com.texthub.core.ToolRegistry
 import com.texthub.core.prefs.PrefsData
 import com.texthub.core.prefs.PrefsKeys
+import com.texthub.core.prefs.UiSettings
 import com.texthub.core.prefs.formatDataSize
 
 /**
@@ -68,6 +69,11 @@ class AppPreferences(context: Context) {
     var haptics: Boolean
         get() = read().bool(PrefsKeys.HAPTIC_FEEDBACK, true)
         set(value) = update { it.with(PrefsKeys.HAPTIC_FEEDBACK, value.toString()) }
+
+    /** The 1.7.0 settings as one value; written whole so a partial update cannot drift. */
+    var uiSettings: UiSettings
+        get() = read().uiSettings()
+        set(value) = update { it.withUiSettings(value) }
 
     var lastTool: String?
         get() = read().string(PrefsKeys.LAST_TOOL)
@@ -146,6 +152,9 @@ class AppPreferences(context: Context) {
      * store is touched, and there was never anything secret in it to begin with.
      */
     fun restoreDefaults() = update { it.restoredToDefaults() }
+
+    /** "Reset favourites": removes the favourites and their order, nothing else. */
+    fun clearFavorites() = update { it.withoutFavorites() }
 
     companion object {
         private const val PREFS_NAME = "texthub_preferences"

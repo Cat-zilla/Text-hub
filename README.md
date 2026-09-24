@@ -14,9 +14,9 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.6.5 (versionCode 14) |
+| Version | 1.6.7 (versionCode 16) |
 | Tools | 74, in 6 categories (audited: see §9) |
-| Tests | 488 unit tests, all green (431 `:core:test` + 57 `:app:testDebugUnitTest`) |
+| Tests | 529 unit tests, all green (465 `:core:test` + 64 `:app:testDebugUnitTest`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
@@ -404,6 +404,9 @@ Notes:
 | `PrefsModelTest` (extended) | 15 | Adds the drag store: moving a favourite by id in front of another row, dropping at the end, refusing an anchor that is not on screen, and "clear temporary data" never touching the order |
 | `DragReorderTest` (app) | 39 | The drag arithmetic *and* the mapping: the A B C D E matrix (every row to every position), the displayed slot equal to the stored position, the rows sliding exactly one row aside, the leftover settle distance, clamping and dead zones, filtered favourites moving the right entry, rapid consecutive drags and cancellations, and the smooth-motion rules - the same auto-scroll speed at 60 Hz and 120 Hz, a capped catch-up after a stalled frame, a slow drag that does not move until 60% of a row is covered, a fast drag that lands under the finger, hovering on a boundary without flicker, and the offset absorbing exactly what was scrolled |
 | `UniversalDecoderDispatchTest` | 19 | The Universal Decoder through the *production* path (registered tool -> registry -> processing engine): encode "Hello TextHub" -> analyse -> decode, an encoding that never asks for a secret and never reaches a cipher check, no path in the whole corpus that reports a cipher-settings problem, parameter torture over every deterministic and classical tool, the registry accounting matrix, candidates that only ever name registered tools, and the session-only manual override |
+| `UiSettingsTest` (1.6.7) | 14 | The settings model: defaults, round trip, unknown values, restore/reset semantics (favourites kept, settings kept by "reset remembered tool settings", favourites-only reset), one source of truth for Large text / Reduce animations |
+| `SensitiveFieldClearingTest` (1.6.7) | 6 | "Clear sensitive fields" over the real registry: only sensitive parameters reset, unknown keys untouched, idempotent, no secret survives, every PASSWORD parameter declared sensitive |
+| `RsaKeyVaultTest` (+2 in 1.6.7) | 23 | Adds `deleteAll`: every record removed and persisted, count reported, safe on an empty collection |
 
 `RegistryTest` iterates over the *whole* registry, so a newly added tool is immediately covered by
 round-trip, classification, documentation and error-message checks. JUnit XML reports land in
@@ -431,8 +434,17 @@ device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`doc
   `HubViewModel.persistParams()`.
 * **History does not exist.** Text Hub deliberately keeps no history of processed text; the
   settings screen says so.
-* **Clear temporary data** (Settings → Privacy) removes remembered parameters, favourites and
-  recents. Appearance settings survive.
+* **Settings (1.6.7)** are stored as plain booleans and enum ids (`UiSettings` in `:core`): the
+  appearance, accessibility, security and advanced switches. Nothing else is added to the store.
+* **Data & reset** (Settings): *Restore app preferences* resets every setting and keeps favourites
+  and their order; *Reset remembered tool settings* removes remembered parameters and recents only;
+  *Reset favourites* removes exactly the favourites; *Clear saved RSA keys* is the one explicit,
+  separately confirmed action that empties the encrypted key collection; *Clear everything* does all
+  of the above after a two-step confirmation. No reset other than the last two ever touches the vault.
+* **Security & privacy switches (1.6.7)**: sensitive fields are cleared when leaving a tool (the
+  behaviour the app always had; off = kept in memory for the session only), optionally when the app
+  goes to the background, private-key copies are confirmed and private-key previews hidden behind
+  *Reveal* by default. None of these affects the vault, the Keystore alias or the active key pair.
 
 Details: [`docs/PRIVACY.md`](docs/PRIVACY.md).
 

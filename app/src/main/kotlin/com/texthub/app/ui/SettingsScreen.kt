@@ -64,6 +64,16 @@ import com.texthub.app.ui.theme.HubPalette
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.app.viewmodel.HubUiState
+import android.os.Build
+import androidx.compose.material.icons.outlined.Accessibility
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.pluralStringResource
+import com.texthub.app.ui.components.SegmentedControl
+import com.texthub.app.ui.theme.Density
+import com.texthub.core.prefs.AnimationMode
+import com.texthub.core.prefs.LayoutDensity
+import com.texthub.core.prefs.UiSettings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,14 +86,27 @@ fun SettingsScreen(
     onAutoProcessChanged: (Boolean) -> Unit,
     onCopyConfirmationChanged: (Boolean) -> Unit,
     onHapticsChanged: (Boolean) -> Unit,
+    onSettingsChange: ((UiSettings) -> UiSettings) -> Unit,
     onClearTemporaryData: () -> Unit,
     onRestoreDefaults: () -> Unit,
+    onResetFavorites: () -> Unit,
+    onClearSavedRsaKeys: () -> Unit,
+    onClearEverything: () -> Unit,
     versionName: String,
+    versionCode: Int,
+    toolCount: Int,
+    buildType: String,
 ) {
-    // The confirmation is a dialog, because "clear" used to happen silently and take the
-    // favourites with it. Now the user sees exactly what goes and what stays before it does.
+    val settings = state.settings
+    // Every destructive action is a dialog that says exactly what goes and what stays before it
+    // does anything; each is also safe to confirm when there is nothing to remove.
     var confirmingClear by remember { mutableStateOf(false) }
     var confirmingRestore by remember { mutableStateOf(false) }
+    var confirmingFavorites by remember { mutableStateOf(false) }
+    var confirmingKeys by remember { mutableStateOf(false) }
+    var confirmingEverything by remember { mutableStateOf(false) }
+    var confirmingEverythingFinal by remember { mutableStateOf(false) }
+    val dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -123,7 +146,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = 720.dp),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Density.cardGap),
           ) {
             // ------------------------------------------------------------- appearance
             SectionCard {
@@ -147,23 +170,225 @@ fun SettingsScreen(
                     )
                 }
                 HubDivider()
+                SwitchRow(
+                    title = stringResource(R.string.settings_dynamic_color),
+                    subtitle = stringResource(
+                        if (dynamicColorAvailable) R.string.settings_dynamic_color_sub else R.string.settings_dynamic_color_unavailable
+                    ),
+                    checked = settings.dynamicColor && dynamicColorAvailable,
+                    enabled = dynamicColorAvailable,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(dynamicColor = on) } },
+                )
+                HubDivider()
                 Text(
                     text = stringResource(R.string.settings_accent),
                     style = MaterialTheme.typography.labelSmall,
                     color = mutedTextColor,
                 )
                 Text(
-                    text = stringResource(R.string.settings_accent_sub),
+                    text = stringResource(
+                        if (settings.dynamicColor && dynamicColorAvailable) R.string.settings_accent_dynamic_note else R.string.settings_accent_sub
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = mutedTextColor,
                     modifier = Modifier.padding(top = Spacing.xs),
                 )
+                // The accent stays selectable while dynamic colour is on: the choice is kept and
+                // returns the moment dynamic colour is switched off.
                 AccentPicker(selected = state.accent, onSelect = onAccentSelected)
+                HubDivider()
+                ChoiceRow(
+                    title = stringResource(R.string.settings_density),
+                    subtitle = stringResource(R.string.settings_density_sub),
+                    options = listOf(stringResource(R.string.density_comfortable), stringResource(R.string.density_compact)),
+                    selectedIndex = if (settings.density == LayoutDensity.COMPACT) 1 else 0,
+                    onSelect = { i -> onSettingsChange { it.copy(density = if (i == 1) LayoutDensity.COMPACT else LayoutDensity.COMFORTABLE) } },
+                )
+                ChoiceRow(
+                    title = stringResource(R.string.settings_text_size),
+                    subtitle = stringResource(R.string.settings_text_size_sub),
+                    options = listOf(stringResource(R.string.text_size_system), stringResource(R.string.text_size_large)),
+                    selectedIndex = if (settings.largeText) 1 else 0,
+                    onSelect = { i -> onSettingsChange { it.copy(largeText = i == 1) } },
+                )
+                ChoiceRow(
+                    title = stringResource(R.string.settings_animation),
+                    subtitle = stringResource(R.string.settings_animation_sub),
+                    options = listOf(
+                        stringResource(R.string.animation_full),
+                        stringResource(R.string.animation_reduced),
+                        stringResource(R.string.animation_off),
+                    ),
+                    selectedIndex = settings.animation.ordinal,
+                    onSelect = { i -> onSettingsChange { it.copy(animation = AnimationMode.values()[i]) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_show_tool_icons),
+                    subtitle = stringResource(R.string.settings_show_tool_icons_sub),
+                    checked = settings.showToolIcons,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(showToolIcons = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_monospace_output),
+                    subtitle = stringResource(R.string.settings_monospace_output_sub),
+                    checked = settings.monospaceOutput,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(monospaceOutput = on) } },
+                )
             }
 
-            // ------------------------------------------------------------- processing
+            // ------------------------------------------------------ security & privacy
             SectionCard {
-                SectionTitle(text = stringResource(R.string.settings_processing))
+                IconTitle(icon = Icons.Outlined.Lock, text = stringResource(R.string.settings_security))
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    text = stringResource(R.string.settings_privacy_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                )
+                Text(
+                    text = stringResource(R.string.settings_history_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+                HubDivider()
+                SwitchRow(
+                    title = stringResource(R.string.settings_clear_on_switch),
+                    subtitle = stringResource(R.string.settings_clear_on_switch_sub),
+                    checked = settings.clearSecretsOnToolSwitch,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(clearSecretsOnToolSwitch = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_clear_on_background),
+                    subtitle = stringResource(R.string.settings_clear_on_background_sub),
+                    checked = settings.clearSecretsOnBackground,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(clearSecretsOnBackground = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_confirm_private_copy),
+                    subtitle = stringResource(R.string.settings_confirm_private_copy_sub),
+                    checked = settings.confirmPrivateKeyCopy,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(confirmPrivateKeyCopy = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_hide_private_preview),
+                    subtitle = stringResource(R.string.settings_hide_private_preview_sub),
+                    checked = settings.hidePrivateKeyPreview,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(hidePrivateKeyPreview = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_sensitive_warnings),
+                    subtitle = stringResource(R.string.settings_sensitive_warnings_sub),
+                    checked = settings.sensitiveWarnings,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(sensitiveWarnings = on) } },
+                )
+            }
+
+            // ----------------------------------------------------------- accessibility
+            SectionCard {
+                IconTitle(icon = Icons.Outlined.Accessibility, text = stringResource(R.string.settings_accessibility))
+                Spacer(Modifier.height(Spacing.sm))
+                // Large text and Reduce animations are the same preferences as Text size and UI
+                // animation above - one value, shown where each kind of user looks for it.
+                SwitchRow(
+                    title = stringResource(R.string.settings_large_text),
+                    subtitle = stringResource(R.string.settings_large_text_sub),
+                    checked = settings.largeText,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(largeText = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_reduce_animations),
+                    subtitle = stringResource(R.string.settings_reduce_animations_sub),
+                    checked = settings.reduceAnimations,
+                    onCheckedChange = { on -> onSettingsChange { it.withReduceAnimations(on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_high_contrast),
+                    subtitle = stringResource(R.string.settings_high_contrast_sub),
+                    checked = settings.highContrast,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(highContrast = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_icon_labels),
+                    subtitle = stringResource(R.string.settings_icon_labels_sub),
+                    checked = settings.iconLabels,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(iconLabels = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_large_targets),
+                    subtitle = stringResource(R.string.settings_large_targets_sub),
+                    checked = settings.largeTouchTargets,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(largeTouchTargets = on) } },
+                )
+                HubDivider()
+                SwitchRow(
+                    title = stringResource(R.string.settings_haptics),
+                    subtitle = stringResource(R.string.settings_haptics_sub),
+                    checked = state.haptics,
+                    onCheckedChange = onHapticsChanged,
+                )
+            }
+
+            // ------------------------------------------------------------ data & reset
+            SectionCard {
+                IconTitle(icon = Icons.Outlined.Storage, text = stringResource(R.string.settings_data_reset))
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    text = stringResource(R.string.settings_storage_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                )
+                HubDivider()
+                ActionRow(
+                    title = stringResource(R.string.settings_restore),
+                    subtitle = stringResource(R.string.settings_restore_sub),
+                    action = stringResource(R.string.settings_restore_action),
+                    onClick = { confirmingRestore = true },
+                )
+                HubDivider()
+                ActionRow(
+                    title = stringResource(R.string.settings_temporary_data),
+                    subtitle = stringResource(R.string.settings_temporary_data_body) + " " +
+                        stringResource(R.string.settings_temporary_data_size, state.temporaryDataSize),
+                    action = stringResource(R.string.action_reset),
+                    onClick = { confirmingClear = true },
+                )
+                HubDivider()
+                ActionRow(
+                    title = stringResource(R.string.settings_reset_favorites),
+                    subtitle = if (state.favorites.isEmpty()) {
+                        stringResource(R.string.settings_reset_favorites_none)
+                    } else {
+                        pluralStringResource(R.plurals.settings_reset_favorites_sub, state.favorites.size, state.favorites.size)
+                    },
+                    action = stringResource(R.string.action_reset),
+                    onClick = { confirmingFavorites = true },
+                )
+                HubDivider()
+                ActionRow(
+                    title = stringResource(R.string.settings_clear_keys),
+                    subtitle = if (state.rsaSavedKeys.isEmpty()) {
+                        stringResource(R.string.settings_clear_keys_none)
+                    } else {
+                        pluralStringResource(R.plurals.settings_clear_keys_sub, state.rsaSavedKeys.size, state.rsaSavedKeys.size)
+                    },
+                    action = stringResource(R.string.action_clear),
+                    destructive = true,
+                    onClick = { confirmingKeys = true },
+                )
+                HubDivider()
+                ActionRow(
+                    title = stringResource(R.string.settings_clear_everything),
+                    subtitle = stringResource(R.string.settings_clear_everything_sub),
+                    action = stringResource(R.string.action_clear),
+                    destructive = true,
+                    onClick = { confirmingEverything = true },
+                )
+            }
+
+            // ---------------------------------------------------------------- advanced
+            SectionCard {
+                SectionTitle(text = stringResource(R.string.settings_advanced))
                 Spacer(Modifier.height(Spacing.sm))
                 SwitchRow(
                     title = stringResource(R.string.settings_auto_process),
@@ -175,146 +400,43 @@ fun SettingsScreen(
                     checked = state.autoProcess,
                     onCheckedChange = onAutoProcessChanged,
                 )
-            }
-
-            // -------------------------------------------------------------- clipboard
-            SectionCard {
-                SectionTitle(text = stringResource(R.string.settings_clipboard))
-                Spacer(Modifier.height(Spacing.sm))
                 SwitchRow(
                     title = stringResource(R.string.settings_copy_confirmation),
                     subtitle = stringResource(R.string.settings_copy_confirmation_sub),
                     checked = state.copyConfirmation,
                     onCheckedChange = onCopyConfirmationChanged,
                 )
-            }
-
-            // ------------------------------------------------------------- interaction
-            SectionCard {
-                SectionTitle(text = stringResource(R.string.settings_interaction))
-                Spacer(Modifier.height(Spacing.sm))
+                HubDivider()
                 SwitchRow(
-                    title = stringResource(R.string.settings_haptics),
-                    subtitle = stringResource(R.string.settings_haptics_sub),
-                    checked = state.haptics,
-                    onCheckedChange = onHapticsChanged,
+                    title = stringResource(R.string.settings_show_processing_time),
+                    subtitle = stringResource(R.string.settings_show_processing_time_sub),
+                    checked = settings.showProcessingTime,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(showProcessingTime = on) } },
                 )
-            }
-
-            // ---------------------------------------------------------------- storage
-            // Its own card, separate from the privacy explanation: the two used to share one box,
-            // which made "Clear temporary data" look like part of the privacy text.
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.Storage,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_storage),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(start = Spacing.sm),
-                    )
-                }
-                Spacer(Modifier.height(Spacing.sm))
-                Text(
-                    text = stringResource(R.string.settings_storage_sub),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = mutedTextColor,
+                SwitchRow(
+                    title = stringResource(R.string.settings_show_tool_id),
+                    subtitle = stringResource(R.string.settings_show_tool_id_sub),
+                    checked = settings.showToolId,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(showToolId = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_show_detection),
+                    subtitle = stringResource(R.string.settings_show_detection_sub),
+                    checked = settings.showDetectionDetails,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(showDetectionDetails = on) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.settings_show_validation),
+                    subtitle = stringResource(R.string.settings_show_validation_sub),
+                    checked = settings.showValidationDetails,
+                    onCheckedChange = { on -> onSettingsChange { it.copy(showValidationDetails = on) } },
                 )
                 HubDivider()
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_temporary_data),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        // Live size: it is recomputed whenever the store changes and right after a
-                        // clear, so the number on screen is never stale.
-                        Text(
-                            text = stringResource(R.string.settings_temporary_data_size, state.temporaryDataSize),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    TextAction(
-                        text = stringResource(R.string.action_clear),
-                        onClick = { confirmingClear = true },
-                    )
-                }
-                Spacer(Modifier.height(Spacing.xs))
-                Text(
-                    text = stringResource(R.string.settings_temporary_data_body),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = mutedTextColor,
-                )
-                Text(
-                    text = stringResource(R.string.settings_temporary_data_kept),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = mutedTextColor,
-                    modifier = Modifier.padding(top = Spacing.xs),
-                )
-            }
-
-            // -------------------------------------------------------- restore defaults
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.Restore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_restore),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(start = Spacing.sm),
-                    )
-                }
-                Spacer(Modifier.height(Spacing.sm))
-                Text(
-                    text = stringResource(R.string.settings_restore_sub),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = mutedTextColor,
-                )
-                Spacer(Modifier.height(Spacing.sm))
-                TextAction(
-                    text = stringResource(R.string.settings_restore_action),
-                    onClick = { confirmingRestore = true },
-                )
-            }
-
-            // ---------------------------------------------------------------- privacy
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_privacy),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(start = Spacing.sm),
-                    )
-                }
-                Spacer(Modifier.height(Spacing.sm))
-                Text(
-                    text = stringResource(R.string.settings_privacy_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = mutedTextColor,
-                )
-                HubDivider()
-                Text(
-                    text = stringResource(R.string.settings_history_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = mutedTextColor,
+                ActionRow(
+                    title = stringResource(R.string.settings_reset_tool_settings),
+                    subtitle = stringResource(R.string.settings_reset_tool_settings_sub),
+                    action = stringResource(R.string.action_reset),
+                    onClick = { confirmingClear = true },
                 )
             }
 
@@ -322,7 +444,11 @@ fun SettingsScreen(
             SectionCard {
                 SectionTitle(text = stringResource(R.string.settings_about))
                 Spacer(Modifier.height(Spacing.sm))
+                InfoRow(label = stringResource(R.string.settings_app_name), value = stringResource(R.string.app_name))
                 InfoRow(label = stringResource(R.string.settings_version), value = versionName)
+                InfoRow(label = stringResource(R.string.settings_version_code), value = versionCode.toString())
+                InfoRow(label = stringResource(R.string.settings_build), value = buildType)
+                InfoRow(label = stringResource(R.string.settings_tool_count), value = toolCount.toString())
                 InfoRow(
                     label = stringResource(R.string.settings_developer),
                     value = stringResource(R.string.settings_developer_value),
@@ -331,101 +457,198 @@ fun SettingsScreen(
                     label = stringResource(R.string.settings_licenses),
                     value = stringResource(R.string.settings_licenses_sub),
                 )
+                Text(
+                    text = stringResource(R.string.settings_local_only),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.sm),
+                )
             }
           }
         }
     }
 
     if (confirmingClear) {
-        AlertDialog(
-            onDismissRequest = { confirmingClear = false },
-            title = { Text(stringResource(R.string.clear_data_title)) },
-            text = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.clear_data_removed),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = stringResource(R.string.clear_data_removed_list),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = mutedTextColor,
-                        modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md),
-                    )
-                    Text(
-                        text = stringResource(R.string.clear_data_kept),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = stringResource(R.string.clear_data_kept_list),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = mutedTextColor,
-                        modifier = Modifier.padding(top = Spacing.xs),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmingClear = false
-                        onClearTemporaryData()
-                    },
-                ) {
-                    Text(stringResource(R.string.clear_data_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingClear = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
+        TwoListDialog(
+            title = stringResource(R.string.clear_data_title),
+            removedList = stringResource(R.string.clear_data_removed_list),
+            keptList = stringResource(R.string.clear_data_kept_list),
+            confirmLabel = stringResource(R.string.clear_data_confirm),
+            onConfirm = { confirmingClear = false; onClearTemporaryData() },
+            onDismiss = { confirmingClear = false },
         )
     }
 
     if (confirmingRestore) {
+        TwoListDialog(
+            title = stringResource(R.string.restore_title),
+            removedList = stringResource(R.string.restore_removed_list),
+            keptList = stringResource(R.string.restore_kept_list),
+            confirmLabel = stringResource(R.string.restore_confirm),
+            onConfirm = { confirmingRestore = false; onRestoreDefaults() },
+            onDismiss = { confirmingRestore = false },
+        )
+    }
+
+    if (confirmingFavorites) {
+        TwoListDialog(
+            title = stringResource(R.string.reset_favorites_title),
+            removedList = stringResource(R.string.reset_favorites_removed_list),
+            keptList = stringResource(R.string.reset_favorites_kept_list),
+            confirmLabel = stringResource(R.string.action_reset),
+            onConfirm = { confirmingFavorites = false; onResetFavorites() },
+            onDismiss = { confirmingFavorites = false },
+        )
+    }
+
+    if (confirmingKeys) {
+        TwoListDialog(
+            title = stringResource(R.string.clear_keys_title),
+            removedList = stringResource(R.string.clear_keys_removed_list),
+            keptList = stringResource(R.string.clear_keys_kept_list),
+            confirmLabel = stringResource(R.string.clear_keys_confirm),
+            destructive = true,
+            onConfirm = { confirmingKeys = false; onClearSavedRsaKeys() },
+            onDismiss = { confirmingKeys = false },
+        )
+    }
+
+    if (confirmingEverything) {
+        TwoListDialog(
+            title = stringResource(R.string.clear_everything_title),
+            removedList = stringResource(R.string.clear_everything_removed_list),
+            keptList = stringResource(R.string.clear_everything_kept_list),
+            confirmLabel = stringResource(R.string.action_continue),
+            destructive = true,
+            onConfirm = { confirmingEverything = false; confirmingEverythingFinal = true },
+            onDismiss = { confirmingEverything = false },
+        )
+    }
+
+    if (confirmingEverythingFinal) {
+        // The second step exists because saved private keys cannot be recovered afterwards.
         AlertDialog(
-            onDismissRequest = { confirmingRestore = false },
-            title = { Text(stringResource(R.string.restore_title)) },
-            text = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.restore_removed),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = stringResource(R.string.restore_removed_list),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = mutedTextColor,
-                        modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md),
-                    )
-                    Text(
-                        text = stringResource(R.string.restore_kept),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = stringResource(R.string.restore_kept_list),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = mutedTextColor,
-                        modifier = Modifier.padding(top = Spacing.xs),
-                    )
-                }
-            },
+            onDismissRequest = { confirmingEverythingFinal = false },
+            title = { Text(stringResource(R.string.clear_everything_final_title)) },
+            text = { Text(stringResource(R.string.clear_everything_final_message)) },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        confirmingRestore = false
-                        onRestoreDefaults()
-                    },
-                ) {
-                    Text(stringResource(R.string.restore_confirm))
-                }
+                    onClick = { confirmingEverythingFinal = false; onClearEverything() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text(stringResource(R.string.clear_everything_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingRestore = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
+                TextButton(onClick = { confirmingEverythingFinal = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
+    }
+}
+
+/** A "will be removed / will be kept" confirmation, the shape every reset in the app uses. */
+@Composable
+private fun TwoListDialog(
+    title: String,
+    removedList: String,
+    keptList: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    destructive: Boolean = false,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(text = stringResource(R.string.clear_data_removed), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = removedList,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md),
+                )
+                Text(text = stringResource(R.string.clear_data_kept), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = keptList,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = if (destructive) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun IconTitle(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(start = Spacing.sm),
+        )
+    }
+}
+
+/** A titled row with one action at the end; destructive actions are drawn in the error colour. */
+@Composable
+private fun ActionRow(
+    title: String,
+    subtitle: String,
+    action: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium)
+            Text(text = subtitle, style = MaterialTheme.typography.labelSmall, color = mutedTextColor)
+        }
+        TextAction(
+            text = action,
+            onClick = onClick,
+            contentDescription = "$action: $title",
+            color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+/** A titled segmented choice (density, text size, animation). */
+@Composable
+private fun ChoiceRow(
+    title: String,
+    subtitle: String,
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
+        Text(text = title, style = MaterialTheme.typography.bodyMedium)
+        Text(text = subtitle, style = MaterialTheme.typography.labelSmall, color = mutedTextColor)
+        Spacer(Modifier.height(Spacing.sm))
+        SegmentedControl(options = options, selectedIndex = selectedIndex, onSelect = onSelect)
     }
 }
 
@@ -539,6 +762,7 @@ private fun SwitchRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     // The whole row is the switch: one full-width, accessible target whose merged semantics read
     // "title, subtitle, on/off" as a single control, instead of a small switch beside passive text.
@@ -548,8 +772,10 @@ private fun SwitchRow(
             .toggleable(
                 value = checked,
                 role = Role.Switch,
+                enabled = enabled,
                 onValueChange = onCheckedChange,
             )
+            .alpha(if (enabled) 1f else 0.5f)
             .padding(vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -562,7 +788,7 @@ private fun SwitchRow(
             )
         }
         // The row carries the state and the click; the switch is the visual of that one state.
-        Switch(checked = checked, onCheckedChange = null)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

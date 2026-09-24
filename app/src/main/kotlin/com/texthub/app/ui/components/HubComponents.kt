@@ -54,7 +54,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.texthub.app.R
+import com.texthub.app.ui.theme.Density
 import com.texthub.app.ui.theme.Spacing
+import com.texthub.app.ui.theme.decorativeSpec
+import com.texthub.app.ui.theme.touchTargetMin
 import com.texthub.app.ui.theme.cardContainerColor
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.core.model.Choice
@@ -80,7 +83,7 @@ fun SectionCard(
         modifier.fillMaxWidth()
     }
     Card(modifier = cardModifier, shape = shape, colors = colors) {
-        Column(Modifier.padding(Spacing.lg)) { content() }
+        Column(Modifier.padding(Density.cardPadding)) { content() }
     }
 }
 
@@ -165,6 +168,7 @@ fun SegmentedControl(
                 val selected = index == selectedIndex
                 val bg by animateColorAsState(
                     targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    animationSpec = decorativeSpec(200),
                     label = "segmentBackground",
                 )
                 val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -435,13 +439,15 @@ fun TextAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentDescription: String? = null,
+    color: Color = MaterialTheme.colorScheme.primary,
 ) {
-    val color = if (enabled) MaterialTheme.colorScheme.primary else mutedTextColor.copy(alpha = 0.5f)
+    val tint = if (enabled) color else mutedTextColor.copy(alpha = 0.5f)
     Box(
         modifier = modifier
             // The pill stays visually the same size; only the touchable area grows to the
             // accessible minimum, so Copy / Paste / Clear are easy to hit and nothing shifts.
             .minimumInteractiveComponentSize()
+            .heightIn(min = touchTargetMin)
             .clip(RoundedCornerShape(50))
             .clickable(enabled = enabled) { onClick() }
             .semantics {
@@ -455,7 +461,7 @@ fun TextAction(
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            color = color,
+            color = tint,
         )
     }
 }

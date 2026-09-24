@@ -22,6 +22,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import com.texthub.app.ui.theme.TextHubTheme
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.texthub.core.ToolRegistry
+import com.texthub.app.viewmodel.RsaVaultEvent
 import com.texthub.core.detector.UniversalDecoder
 import com.texthub.app.viewmodel.HubViewModel
 import kotlinx.coroutines.launch
@@ -33,6 +39,8 @@ private enum class Screen { MAIN, SETTINGS }
 fun HubApp(
     viewModel: HubViewModel,
     versionName: String,
+    versionCode: Int = 0,
+    buildType: String = "",
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -108,7 +116,19 @@ fun HubApp(
         context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    TextHubTheme(theme = state.theme, accent = state.accent) {
+    // "Clear sensitive fields when the app goes to the background": ON_STOP is the moment the
+    // activity is no longer visible (home, recents, another app). The ViewModel decides whether
+    // anything happens, so with the setting off this observer is inert.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.onAppBackground()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    TextHubTheme(theme = state.theme, accent = state.accent, settings = state.settings) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = androidx.compose.material3.MaterialTheme.colorScheme.background,
@@ -155,6 +175,8 @@ fun HubApp(
                             viewModel.setParam(UniversalDecoder.PARAM_PREFER, toolId)
                         },
                         onAnalyseAgain = viewModel::analyseResultAgain,
+                        onUseSavedAnalysisKey = viewModel::useSavedRsaKeyForAnalysis,
+                        onClearAnalysisKey = viewModel::clearAnalysisKey,
                     )
                     Screen.SETTINGS -> SettingsScreen(
                         state = state,
@@ -165,6 +187,28 @@ fun HubApp(
                         onAutoProcessChanged = viewModel::setAutoProcess,
                         onCopyConfirmationChanged = viewModel::setCopyConfirmation,
                         onHapticsChanged = viewModel::setHaptics,
+                        onSettingsChange = viewModel::updateSettings,
+                        onResetFavorites = {
+                            viewModel.resetFavorites()
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(com.texthub.app.R.string.msg_favorites_reset)
+                                )
+                            }
+                        },
+                        onClearSavedRsaKeys = {
+                            // The count comes back as RsaVaultEvent.VaultCleared; the main screen's
+                            // key generator reports it, and here the settings screen does the same.
+                            viewModel.clearSavedRsaKeys()
+                        },
+                        onClearEverything = {
+                            viewModel.clearEverything()
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(com.texthub.app.R.string.msg_everything_cleared)
+                                )
+                            }
+                        },
                         onClearTemporaryData = {
                             viewModel.clearTemporaryData()
                             scope.launch {
@@ -182,7 +226,24 @@ fun HubApp(
                             }
                         },
                         versionName = versionName,
+                        versionCode = versionCode,
+                        toolCount = ToolRegistry.all.size,
+                        buildType = buildType,
                     )
+            }
+
+            // The settings screen has no key generator on it, so the vault-cleared confirmation is
+            // shown here when that is where the action came from.
+            LaunchedEffect(state.rsaEvent, screen) {
+                val event = state.rsaEvent
+                if (screen == Screen.SETTINGS && event is RsaVaultEvent.VaultCleared) {
+                    viewModel.consumeRsaEvent()
+                    snackbarHostState.showSnackbar(
+                        context.resources.getQuantityString(
+                            com.texthub.app.R.plurals.msg_saved_keys_cleared, event.count, event.count,
+                        )
+                    )
+                }
             }
 
             if (pickerVisible) {

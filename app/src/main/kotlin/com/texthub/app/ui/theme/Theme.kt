@@ -10,7 +10,11 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.ColorScheme
+import androidx.compose.ui.graphics.compositeOver
+import com.texthub.core.prefs.UiSettings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +60,7 @@ object Spacing {
 fun TextHubTheme(
     theme: AppTheme = AppTheme.SYSTEM,
     accent: AccentOption = AccentOption.TEAL,
+    settings: UiSettings = UiSettings.DEFAULT,
     content: @Composable () -> Unit,
 ) {
     val darkTheme = when (theme) {
@@ -70,7 +75,17 @@ fun TextHubTheme(
         AppTheme.LIGHT -> LightColorScheme
         AppTheme.SYSTEM -> if (darkTheme) DarkColorScheme else LightColorScheme
     }
-    val colorScheme = baseScheme.withAccent(accent, darkTheme)
+    val context = LocalContext.current
+    val dynamicAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val colorScheme = if (settings.dynamicColor && dynamicAvailable) {
+        // Dynamic colour: the system palette replaces the accent *while enabled*. The stored accent
+        // is untouched, so switching dynamic colour off brings the user's choice straight back.
+        // AMOLED keeps its black background over the dynamic palette.
+        val dynamic = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        if (theme == AppTheme.AMOLED) dynamic.copy(background = baseScheme.background, surface = baseScheme.surface) else dynamic
+    } else {
+        baseScheme.withAccent(accent, darkTheme)
+    }.let { scheme -> if (settings.highContrast) scheme.withHighContrast(darkTheme) else scheme }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -86,13 +101,28 @@ fun TextHubTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = HubTypography,
-        shapes = HubShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalUiSettings provides settings) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typographyFor(settings),
+            shapes = HubShapes,
+            content = content,
+        )
+    }
 }
+
+/**
+ * High-contrast controls: stronger outlines and borders, a more distinct container for selected
+ * states and a firmer muted text - on top of whatever theme and accent are active, so light, dark,
+ * AMOLED and dynamic colour all keep their own look.
+ */
+fun ColorScheme.withHighContrast(dark: Boolean): ColorScheme = copy(
+    outline = onBackground.copy(alpha = 0.85f),
+    outlineVariant = onBackground.copy(alpha = 0.45f),
+    onSurfaceVariant = onSurface.copy(alpha = 0.92f),
+    surfaceVariant = if (dark) Color.White.copy(alpha = 0.16f).compositeOver(surface) else Color.Black.copy(alpha = 0.10f).compositeOver(surface),
+    primaryContainer = if (dark) primary.copy(alpha = 0.35f).compositeOver(surface) else primary.copy(alpha = 0.22f).compositeOver(surface),
+)
 
 /** Card container colour that keeps a subtle lift in every theme. */
 val cardContainerColor: Color

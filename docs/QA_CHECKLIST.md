@@ -385,3 +385,76 @@ Manual (no emulator in this environment — not performed here):
 | 8 | Delete a saved pair | Confirmation; record gone; the other record survives; deleting the active's record keeps the pair on screen, now unsaved |
 | 9 | Kill and reopen the app | Saved list intact; active unsaved pair gone (by design); empty state until Generate/Load |
 | 10 | Restore defaults | Saved key pairs survive (dialog says so) |
+
+## Round 16 — 1.6.6: Universal Decoder — complete RSA keys + saved-key integration
+
+Automated (`UniversalDecoderRsaKeyTest`, 12 tests; `AnalysisKeyStateTest`, 7 tests):
+
+| Check | Test |
+| --- | --- |
+| A complete multi-line private PEM opens an RSA payload through the registered tool + engine | `aCompleteMultiLinePrivatePemOpensAnRsaPayloadThroughTheDecoder` |
+| A 4096-bit PEM (several kB) is not truncated anywhere in the parameter/validation/processing path | `a4096BitPrivatePemIsNotTruncatedAnywhereOnTheWay` |
+| CRLF / padded / single-line / space-joined / surrounded PEMs reach the RSA processor unchanged and open | `theKeyReachesTheRsaProcessorUnchanged`, `everyRsaFormatTheRsaToolAcceptsIsAcceptedByTheDecoder` |
+| A public PEM is accepted as key material and refused with the RSA tool's own sentence | `aPublicPemIsAcceptedAsKeyMaterialAndAnsweredHonestly` |
+| Wrong / malformed / incomplete / PKCS#1 / non-key input → recoverable failure, no cipher-settings wording, no key echo | `anInvalidOrMismatchedRsaKeyIsARecoverableFailureWithoutKeyMaterial` |
+| Passwords, hex and Base64 raw keys unchanged | `passwordsAndSymmetricKeysStillWorkExactlyAsBefore` |
+| The secret parameter stays a sensitive PASSWORD parameter with no validator (no per-keystroke parsing) and is never remembered | `theSecretParameterKeepsItsPasswordKindAndNoValidatorParsesOnEveryKeystroke` |
+| RSA detected and "RSA private key" named before any key exists; kind follows direction | `rsaIsDetectedAndTheRequiredKeyIsNamedBeforeAnyKeyExists`, `theDiagnosisKeepsSayingRsaKeyAfterAFailedAttemptAndAfterSuccess` |
+| The decoder never decrypts a vault record, never writes to the vault, never tries other saved keys | `theDecoderNeverTriesSavedKeysAndNeverSavesAPastedOne` |
+| No key body in reports, errors or reasons | `keyMaterialNeverAppearsInReportsOrErrors` |
+| Key stored verbatim; Clear keeps ciphertext + analysis; saved key = exactly that key, labelled; editing → manual; editor follows detected kind | `AnalysisKeyStateTest` (all) |
+
+Manual (no emulator in this environment — not performed here):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Paste an RSA-OAEP + AES-GCM payload into the Universal Decoder | "Recognised, and it is encrypted. Enter the private key to open it."; the key field is the multi-line *RSA private key* editor with *Use saved key* / *Clear* |
+| 2 | Long-press → Paste a complete 2048- and 4096-bit private PEM | Whole block visible and scrollable, line breaks kept; decrypts after the debounce; status "Using manually entered key" |
+| 3 | Tap Clear | Key gone, ciphertext and analysis card stay, saved list untouched |
+| 4 | Tap Use saved key → pick a record | Only name / size / fingerprint / date shown; the payload decrypts; status "Using saved key: <name>" |
+| 5 | Pick another saved key | Field and status switch; only the chosen key is used (wrong key → RSA failure message) |
+| 6 | Edit the loaded key by one character | Status becomes "Using manually entered key"; the saved record is unchanged in the generator's list |
+| 7 | Settings → Restore Defaults | Key field emptied; saved key pairs intact |
+| 8 | Kill and reopen the app | Key field empty (never persisted); vault intact |
+| 9 | AES-GCM password payload, raw-key payload | Ordinary single-line password field, as before |
+
+## Round 17 — 1.6.7: Settings & UX polish
+
+Automated (`UiSettingsTest`, 14 tests; `SensitiveFieldClearingTest`, 6 tests; `RsaKeyVaultTest` +2):
+
+| Check | Test |
+| --- | --- |
+| Every new setting has the documented default; an empty store reads as the defaults; unknown stored values fall back | `defaultsMatchTheSettingsSpecification`, `anEmptyStoreReadsAsTheDefaults`, `unknownStoredValuesFallBackToTheDefaults` |
+| Every setting survives a round trip; writing them never touches favourites, theme or remembered params | `everySettingSurvivesARoundTrip`, `writingSettingsLeavesOtherPreferencesAlone` |
+| Stored values are only `true`/`false`/enum ids — never text or secrets | `storedValuesContainNoTextOrSecretShapedData` |
+| Restore app preferences resets every setting and keeps exactly the favourites | `restoringDefaultsResetsEverySettingAndKeepsFavourites` |
+| Reset remembered tool settings keeps every setting | `clearingTemporaryDataKeepsEverySetting` |
+| Reset favourites removes only favourites (+ legacy key); no-op when empty | `resettingFavouritesRemovesOnlyFavourites`, `resettingFavouritesWhenThereAreNoneIsANoOp` |
+| Large text / Reduce animations are one source of truth with Text size / UI animation | `reduceAnimationsIsAViewOfTheAnimationMode`, `animationModesScaleDurationsAsDocumented` |
+| Clear sensitive fields resets only sensitive params; unknown keys untouched; idempotent; no secret survives in any tool | `SensitiveFieldClearingTest` (all) |
+| Every PASSWORD parameter in the registry is declared sensitive | `everyPasswordParameterInTheRegistryIsSensitive` |
+| Clear saved RSA keys empties and persists the collection, reports the count, safe when empty | `deleteAllRemovesEveryRecordAndReportsTheCount`, `deleteAllOnAnEmptyCollectionIsSafe` |
+
+Manual (no emulator in this environment — not performed here):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Settings | Six cards in order: Appearance, Security & privacy, Accessibility, Data & reset, Advanced, About |
+| 2 | Appearance → Dynamic colour on (Android 12+) | Palette follows wallpaper; accent swatches still selectable; off again → previous accent returns exactly |
+| 3 | Dynamic colour on an Android 11 device | Row disabled with the explanation; accent works as before |
+| 4 | Layout density → Compact | Card padding/gaps shrink; Copy/Paste/Clear and switches still ≥48dp |
+| 5 | Text size → Large; then Accessibility → Large text | Both reflect the same state; system font scale still stacks on top |
+| 6 | UI animation → Off; Accessibility → Reduce animations | Switch shows on; segmented control and favourites row-shift snap; processing bar still shows; drag/reorder still works; Reduce off → Full |
+| 7 | Show tool icons off | Monogram gone from the header and the picker list; TalkBack still reads the tool name |
+| 8 | Monospace output off | Result box proportional; input unchanged |
+| 9 | Security → Clear on leaving tool OFF, type an AES password, switch tool and back | Password still there (session); kill app → gone. Default ON → empty after switching |
+| 10 | Clear on background ON, type a password, press Home, return | Password field empty; input text, output, generated RSA pair and saved keys untouched |
+| 11 | RSA key generator | Private key shows the hidden placeholder; Reveal shows the PEM; Copy asks first; with both settings off the 1.6.6 behaviour returns |
+| 12 | Sensitive-data warnings off | The red "Never share it" line under the private key disappears; nothing else changes |
+| 13 | Accessibility → High-contrast | Stronger outlines/selection; theme and accent unchanged. Icon labels → Share/Clear become text. Larger targets → taller actions |
+| 14 | Data & reset → each action | Dialog lists removed/kept; Cancel does nothing; confirming with nothing to remove shows the message and no error |
+| 15 | Restore app preferences with saved RSA keys present | Every setting back to default, favourites and order kept, saved keys intact |
+| 16 | Clear saved RSA keys | One very explicit dialog with a red *Delete keys* button; the active pair on screen stays; snackbar reports the count |
+| 17 | Clear everything | Two dialogs; afterwards: defaults, no favourites, no saved keys, empty screen |
+| 18 | Advanced toggles | "Processed in N ms" under output; tool id beside the classification chip; candidate rows show `id · confidence · direction`; parameter summary under parameters. Nothing shows a stack trace or a secret |
+| 19 | About | App, version 1.6.7, version code 16, build, tool count, local-only statement |

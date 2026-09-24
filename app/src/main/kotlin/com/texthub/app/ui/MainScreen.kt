@@ -1,6 +1,13 @@
 package com.texthub.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import com.texthub.app.ui.theme.Density
+import com.texthub.app.ui.theme.LocalUiSettings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,9 +60,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.texthub.core.detector.SecretKind
+import com.texthub.core.detector.UniversalDecoder
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -111,6 +125,8 @@ fun MainScreen(
     onClearOverride: () -> Unit,
     onUseCandidate: (String) -> Unit,
     onAnalyseAgain: () -> Unit,
+    onUseSavedAnalysisKey: (String) -> Unit = {},
+    onClearAnalysisKey: () -> Unit = {},
 ) {
     val meta = state.meta
     val keyboard = LocalSoftwareKeyboardController.current
@@ -172,16 +188,27 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 720.dp),
-                verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Density.cardGap),
             ) {
+                val settings = LocalUiSettings.current
                 // -------------------------------------------------------- tool selector
                 SectionCard(onClick = onOpenPicker) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ToolMonogram(glyph = meta.glyph, size = 46.dp, highlighted = true)
+                        if (settings.showToolIcons) ToolMonogram(glyph = meta.glyph, size = 46.dp, highlighted = true)
                         Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.md)) {
                             Text(text = meta.name, style = MaterialTheme.typography.titleMedium)
-                            Row(modifier = Modifier.padding(top = 4.dp)) {
+                            Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 ClassificationChip(classification = meta.classification)
+                                if (settings.showToolId) {
+                                    // Advanced > Show tool ID: the registry identifier, for bug reports.
+                                    Text(
+                                        text = meta.id,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = mutedTextColor,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(start = Spacing.sm),
+                                    )
+                                }
                             }
                         }
                         IconButton(onClick = onOpenInfo) {
@@ -260,11 +287,40 @@ fun MainScreen(
                         Spacer(Modifier.height(Spacing.md))
                         meta.primaryParams.forEachIndexed { index, spec ->
                             if (index > 0) Spacer(Modifier.height(Spacing.md))
-                            ParameterField(
-                                spec = spec,
-                                value = state.params[spec.key] ?: spec.defaultValue,
-                                issue = state.issueFor(spec.key),
-                                onValueChange = { onParamChange(spec.key, it) },
+                            if (spec.key == UniversalDecoder.PARAM_SECRET && state.analysisUsesRsaKeyEditor) {
+                                // The detected payload needs RSA key material: a PEM block is not
+                                // a password, so it gets the multi-line key editor (same value,
+                                // same parameter, same processing path as the password editor).
+                                RsaKeyParameterField(
+                                    state = state,
+                                    snackbarHostState = snackbarHostState,
+                                    onValueChange = { onParamChange(spec.key, it) },
+                                    onUseSavedKey = onUseSavedAnalysisKey,
+                                    onClear = onClearAnalysisKey,
+                                    onConsumeEvent = onConsumeKeyEvent,
+                                )
+                            } else {
+                                ParameterField(
+                                    spec = spec,
+                                    value = state.params[spec.key] ?: spec.defaultValue,
+                                    issue = state.issueFor(spec.key),
+                                    onValueChange = { onParamChange(spec.key, it) },
+                                )
+                            }
+                        }
+                        if (settings.showValidationDetails) {
+                            // Advanced > Show validation details: one line per parameter warning,
+                            // or a short "all valid" - the same messages the fields show inline.
+                            Spacer(Modifier.height(Spacing.sm))
+                            val summary = if (state.paramIssues.isEmpty()) {
+                                pluralStringResource(R.plurals.msg_validation_ok, meta.params.size, meta.params.size)
+                            } else {
+                                state.paramIssues.joinToString("\n") { "${'$'}{meta.params.firstOrNull { p -> p.key == it.key }?.label ?: it.key}: ${'$'}{it.message}" }
+                            }
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (state.paramIssues.isEmpty()) mutedTextColor else MaterialTheme.colorScheme.error,
                             )
                         }
                         if (meta.advancedParams.isNotEmpty()) {
@@ -487,10 +543,19 @@ fun MainScreen(
                         onValueChange = {},
                         placeholder = stringResource(R.string.hint_output),
                         readOnly = true,
-                        monospace = true,
+                        monospace = settings.monospaceOutput,
                         minHeight = 108.dp,
                         maxLines = 10,
                     )
+                    if (settings.showProcessingTime && state.lastDurationMs != null && state.output.isNotEmpty()) {
+                        // Advanced > Show processing time: the engine's own measurement of the last run.
+                        Text(
+                            text = stringResource(R.string.msg_processing_time, state.lastDurationMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedTextColor,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
+                    }
                     Spacer(Modifier.height(Spacing.md))
 
                     // Swap: moves the result into the input and, when the tool has a reverse
@@ -520,10 +585,25 @@ fun MainScreen(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatsLine(stats = state.outputStats, modifier = Modifier.weight(1f))
+                        if (settings.iconLabels) {
+                            // Accessibility > Always show text labels: the two icon-only buttons
+                            // become labelled text actions (same callbacks, same enabled state).
+                            TextAction(
+                                text = stringResource(R.string.action_share),
+                                onClick = onShare,
+                                enabled = state.output.isNotEmpty(),
+                            )
+                            TextAction(
+                                text = stringResource(R.string.action_clear),
+                                onClick = onClearOutput,
+                                enabled = state.output.isNotEmpty(),
+                                contentDescription = stringResource(R.string.cd_clear_output),
+                            )
+                        } else {
                         IconButton(
                             onClick = onShare,
                             enabled = state.output.isNotEmpty(),
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(if (settings.largeTouchTargets) 48.dp else 40.dp),
                         ) {
                             Icon(
                                 Icons.Outlined.Share,
@@ -539,7 +619,7 @@ fun MainScreen(
                         IconButton(
                             onClick = onClearOutput,
                             enabled = state.output.isNotEmpty(),
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(if (settings.largeTouchTargets) 48.dp else 40.dp),
                         ) {
                             Icon(
                                 Icons.Outlined.Close,
@@ -547,6 +627,7 @@ fun MainScreen(
                                 tint = mutedTextColor,
                                 modifier = Modifier.size(20.dp),
                             )
+                        }
                         }
                     }
                 }
@@ -601,6 +682,7 @@ private fun RsaKeyGenSections(
     var saveDialogVisible by remember { mutableStateOf(false) }
     var pendingReplaceName by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    var confirmPrivateCopy by remember { mutableStateOf(false) }
     var pendingLoadName by remember { mutableStateOf<String?>(null) }
     var pendingDeleteName by remember { mutableStateOf<String?>(null) }
 
@@ -622,6 +704,9 @@ private fun RsaKeyGenSections(
                 context.getString(R.string.msg_key_load_failed)
             )
             is RsaVaultEvent.Failed -> snackbarHostState.showSnackbar(event.message)
+            is RsaVaultEvent.VaultCleared -> snackbarHostState.showSnackbar(
+                context.resources.getQuantityString(R.plurals.msg_saved_keys_cleared, event.count, event.count)
+            )
             null -> Unit
         }
         if (state.rsaEvent != null) onConsumeEvent()
@@ -749,12 +834,24 @@ private fun RsaKeyGenSections(
         }
 
         // ---------------------------------------------------------------------- private key
+        // Security & Privacy: the preview is masked until Reveal (session state, per pair) and
+        // Copy asks first, each behind its own setting. The key itself is identical either way.
+        val settings = LocalUiSettings.current
+        var privateRevealed by remember(keys.fingerprint) { mutableStateOf(!settings.hidePrivateKeyPreview) }
+        val masked = settings.hidePrivateKeyPreview && !privateRevealed
         SectionCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle(text = stringResource(R.string.rsa_private_title), modifier = Modifier.weight(1f))
+                if (settings.hidePrivateKeyPreview) {
+                    TextAction(
+                        text = stringResource(if (masked) R.string.action_reveal else R.string.action_hide),
+                        onClick = { privateRevealed = masked },
+                        contentDescription = stringResource(if (masked) R.string.cd_reveal_private else R.string.cd_hide_private),
+                    )
+                }
                 TextAction(
                     text = stringResource(R.string.action_copy),
-                    onClick = { onCopy(keys.privatePem) },
+                    onClick = { if (settings.confirmPrivateKeyCopy) confirmPrivateCopy = true else onCopy(keys.privatePem) },
                     contentDescription = stringResource(R.string.cd_copy_private),
                 )
             }
@@ -763,21 +860,45 @@ private fun RsaKeyGenSections(
                 style = MaterialTheme.typography.labelSmall,
                 color = mutedTextColor,
             )
-            Text(
-                text = stringResource(R.string.rsa_private_warning),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = Spacing.xs),
-            )
+            if (settings.sensitiveWarnings) {
+                Text(
+                    text = stringResource(R.string.rsa_private_warning),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
             Spacer(Modifier.height(Spacing.xs))
-            HubTextField(
-                value = keys.privatePem,
-                onValueChange = {},
-                readOnly = true,
-                monospace = true,
-                minHeight = 160.dp,
-                maxLines = 10,
-            )
+            if (masked) {
+                // A placeholder, not a transformation of the key: nothing derived from the private
+                // material is drawn, measured or exposed to accessibility while hidden.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .clickable(onClickLabel = stringResource(R.string.cd_reveal_private)) { privateRevealed = true }
+                        .padding(Spacing.md),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.rsa_private_hidden, keys.bits),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = mutedTextColor,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                HubTextField(
+                    value = keys.privatePem,
+                    onValueChange = {},
+                    readOnly = true,
+                    monospace = true,
+                    minHeight = 160.dp,
+                    maxLines = 10,
+                )
+            }
         }
     }
 
@@ -917,6 +1038,25 @@ private fun RsaKeyGenSections(
         )
     }
 
+    if (confirmPrivateCopy && keys != null) {
+        AlertDialog(
+            onDismissRequest = { confirmPrivateCopy = false },
+            title = { Text(stringResource(R.string.rsa_copy_private_title)) },
+            text = { Text(stringResource(R.string.rsa_copy_private_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmPrivateCopy = false
+                        onCopy(keys.privatePem)
+                    },
+                ) { Text(stringResource(R.string.action_copy)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPrivateCopy = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
@@ -985,6 +1125,182 @@ private fun RsaKeyGenSections(
             },
         )
     }
+}
+
+/**
+ * The Universal Decoder's key field while the detected payload needs an RSA key.
+ *
+ * It edits the very same parameter as the password editor - only the presentation changes: a
+ * multi-line, vertically scrolling monospace field with no length limit, the label says which key
+ * (private or public) the operation needs, and two actions sit under it: *Use saved key* (the
+ * existing saved key pairs, listed by name, size and fingerprint - never by content) and *Clear*
+ * (empties the key only; the input text stays). The value is passed through untouched: nothing
+ * is trimmed, wrapped or truncated, and nothing here is persisted.
+ */
+@Composable
+private fun RsaKeyParameterField(
+    state: HubUiState,
+    snackbarHostState: SnackbarHostState,
+    onValueChange: (String) -> Unit,
+    onUseSavedKey: (String) -> Unit,
+    onClear: () -> Unit,
+    onConsumeEvent: () -> Unit,
+) {
+    val context = LocalContext.current
+    val isPublic = state.analysisSecretKind == SecretKind.PUBLIC_KEY
+    val label = stringResource(if (isPublic) R.string.ud_key_public else R.string.ud_key_private)
+    val value = state.analysisSecret
+    var pickerVisible by remember { mutableStateOf(false) }
+
+    // A saved key that could not be opened is reported here, once (the RSA key pair generator's
+    // sections are not on screen for this tool, so this is the one consumer).
+    LaunchedEffect(state.rsaEvent) {
+        if (state.rsaEvent is RsaVaultEvent.LoadFailed) {
+            onConsumeEvent()
+            snackbarHostState.showSnackbar(context.getString(R.string.msg_key_load_failed))
+        }
+    }
+
+    HubTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = stringResource(if (isPublic) R.string.ud_key_hint_public else R.string.ud_key_hint_private),
+        monospace = true,
+        minHeight = 120.dp,
+        maxLines = 8,
+        // The label only - never the key - is what accessibility services get in addition to the
+        // editable text itself.
+        modifier = Modifier.semantics { contentDescription = label },
+    )
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(1f)) {
+            FieldCaption(label)
+            if (value.isNotEmpty()) {
+                Text(
+                    text = if (state.analysisUsesSavedKey) {
+                        stringResource(R.string.ud_key_status_saved, state.analysisSavedKeyName.orEmpty())
+                    } else {
+                        stringResource(R.string.ud_key_status_manual)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = Spacing.xs, top = 2.dp),
+                )
+            }
+        }
+        TextAction(
+            text = stringResource(R.string.ud_key_use_saved),
+            onClick = { pickerVisible = true },
+            contentDescription = stringResource(R.string.cd_ud_key_use_saved),
+        )
+        TextAction(
+            text = stringResource(R.string.action_clear),
+            onClick = onClear,
+            enabled = value.isNotEmpty(),
+            contentDescription = stringResource(R.string.cd_ud_key_clear),
+        )
+    }
+    Text(
+        text = stringResource(if (isPublic) R.string.ud_key_helper_public else R.string.ud_key_helper_private),
+        style = MaterialTheme.typography.labelSmall,
+        color = mutedTextColor,
+        modifier = Modifier.padding(start = Spacing.xs, top = 4.dp),
+    )
+
+    if (pickerVisible) {
+        SavedRsaKeyPicker(
+            keys = state.rsaSavedKeys,
+            inUse = state.analysisSavedKeyName,
+            onPick = { name ->
+                pickerVisible = false
+                onUseSavedKey(name)
+            },
+            onDismiss = { pickerVisible = false },
+        )
+    }
+}
+
+/**
+ * The saved key pairs as a choice list: name, size, fingerprint and save date - the collection's
+ * listing metadata, which never includes key material. Tapping one entry loads exactly that
+ * record; nothing is tried automatically.
+ */
+@Composable
+private fun SavedRsaKeyPicker(
+    keys: List<com.texthub.core.keys.SavedRsaKeyMeta>,
+    inUse: String?,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.ud_key_picker_title)) },
+        text = {
+            if (keys.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.rsa_saved_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = mutedTextColor,
+                )
+            } else {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    keys.forEach { saved ->
+                        val description = stringResource(
+                            R.string.cd_ud_key_picker_entry, saved.name, saved.bits, saved.fingerprint,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onPick(saved.name) }
+                                .semantics(mergeDescendants = true) { contentDescription = description }
+                                .padding(horizontal = Spacing.xs, vertical = Spacing.sm),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = saved.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (saved.name == inUse) {
+                                    Text(
+                                        text = stringResource(R.string.ud_key_picker_in_use),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = stringResource(R.string.rsa_info_size, saved.bits),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = mutedTextColor,
+                            )
+                            Text(
+                                text = saved.fingerprint,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                ),
+                                color = mutedTextColor,
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.rsa_saved_created,
+                                    java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                                        .format(java.util.Date(saved.createdAt)),
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = mutedTextColor,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 /**

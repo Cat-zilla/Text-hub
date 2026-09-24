@@ -31,6 +31,8 @@ import com.texthub.app.ui.components.SecondaryAction
 import com.texthub.app.ui.components.SectionCard
 import com.texthub.app.ui.components.SectionTitle
 import com.texthub.app.ui.theme.Spacing
+import com.texthub.app.ui.theme.LocalUiSettings
+import androidx.compose.ui.text.font.FontFamily
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.core.ToolRegistry
 import com.texthub.core.detector.Candidate
@@ -205,6 +207,28 @@ private fun CandidateRow(candidate: Candidate, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
                 color = mutedTextColor,
             )
+            if (LocalUiSettings.current.showDetectionDetails) {
+                // Advanced > Show detection details: what the detector already decided, stated
+                // plainly - tool id, confidence level, whether it can run here and which parameters
+                // it read out of the payload (names only; never the payload or a secret). The
+                // detection itself is unchanged.
+                val details = buildString {
+                    append(candidate.toolId)
+                    append(" \u00b7 ").append(candidate.confidence.name.lowercase())
+                    append(" \u00b7 ").append(candidate.direction.name.lowercase())
+                    if (!candidate.actionable) append(" \u00b7 ").append(stringResource(R.string.analysis_detail_not_runnable))
+                    candidate.hashAlgorithm?.let { append(" \u00b7 ").append(it) }
+                    if (candidate.suggestedParams.isNotEmpty()) {
+                        append(" \u00b7 ").append(stringResource(R.string.analysis_detail_params, candidate.suggestedParams.keys.sorted().joinToString(", ")))
+                    }
+                }
+                Text(
+                    text = details,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = mutedTextColor,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
         Badge(
             text = stringResource(candidate.confidence.labelRes()),
@@ -262,6 +286,7 @@ private fun Candidate.secretLabelRes(): Int = when (secretKind) {
     SecretKind.PASSWORD -> R.string.analysis_secret_password
     SecretKind.KEY -> R.string.analysis_secret_key
     SecretKind.PRIVATE_KEY -> R.string.analysis_secret_private_key
+    SecretKind.PUBLIC_KEY -> R.string.analysis_secret_public_key
     null -> R.string.analysis_secret_any
 }
 
