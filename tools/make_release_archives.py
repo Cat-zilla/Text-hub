@@ -29,7 +29,7 @@ import os
 import re
 import zipfile
 
-VERSION = "1.6.7"
+VERSION = "1.6.8"
 ROOT = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOME = os.path.dirname(ROOT)
 PUBLIC_ZIP = os.path.join(HOME, "TextHub-%s-source.zip" % VERSION)

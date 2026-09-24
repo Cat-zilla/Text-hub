@@ -14,9 +14,9 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.6.7 (versionCode 16) |
+| Version | 1.6.8 (versionCode 17) |
 | Tools | 74, in 6 categories (audited: see §9) |
-| Tests | 529 unit tests, all green (465 `:core:test` + 64 `:app:testDebugUnitTest`) |
+| Tests | 540 unit tests, all green (465 `:core:test` + 75 `:app:testDebugUnitTest`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
@@ -404,6 +404,7 @@ Notes:
 | `PrefsModelTest` (extended) | 15 | Adds the drag store: moving a favourite by id in front of another row, dropping at the end, refusing an anchor that is not on screen, and "clear temporary data" never touching the order |
 | `DragReorderTest` (app) | 39 | The drag arithmetic *and* the mapping: the A B C D E matrix (every row to every position), the displayed slot equal to the stored position, the rows sliding exactly one row aside, the leftover settle distance, clamping and dead zones, filtered favourites moving the right entry, rapid consecutive drags and cancellations, and the smooth-motion rules - the same auto-scroll speed at 60 Hz and 120 Hz, a capped catch-up after a stalled frame, a slow drag that does not move until 60% of a row is covered, a fast drag that lands under the finger, hovering on a boundary without flicker, and the offset absorbing exactly what was scrolled |
 | `UniversalDecoderDispatchTest` | 19 | The Universal Decoder through the *production* path (registered tool -> registry -> processing engine): encode "Hello TextHub" -> analyse -> decode, an encoding that never asks for a secret and never reaches a cipher check, no path in the whole corpus that reports a cipher-settings problem, parameter torture over every deterministic and classical tool, the registry accounting matrix, candidates that only ever name registered tools, and the session-only manual override |
+| `SettingsPagesTest` (app, 1.6.8) | 11 | The Settings information architecture: six root destinations, nothing deeper than two levels, every stored preference reachable from a row, the two documented shared-key pairs (Text size/Large text, UI animation/Reduce animations), placement per page, reset actions' grouping and confirmation counts, back navigation up the parents and out |
 | `UiSettingsTest` (1.6.7) | 14 | The settings model: defaults, round trip, unknown values, restore/reset semantics (favourites kept, settings kept by "reset remembered tool settings", favourites-only reset), one source of truth for Large text / Reduce animations |
 | `SensitiveFieldClearingTest` (1.6.7) | 6 | "Clear sensitive fields" over the real registry: only sensitive parameters reset, unknown keys untouched, idempotent, no secret survives, every PASSWORD parameter declared sensitive |
 | `RsaKeyVaultTest` (+2 in 1.6.7) | 23 | Adds `deleteAll`: every record removed and persisted, count reported, safe on an empty collection |

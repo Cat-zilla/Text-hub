@@ -458,3 +458,24 @@ Manual (no emulator in this environment — not performed here):
 | 17 | Clear everything | Two dialogs; afterwards: defaults, no favourites, no saved keys, empty screen |
 | 18 | Advanced toggles | "Processed in N ms" under output; tool id beside the classification chip; candidate rows show `id · confidence · direction`; parameter summary under parameters. Nothing shows a stack trace or a secret |
 | 19 | About | App, version 1.6.7, version code 16, build, tool count, local-only statement |
+
+## Round 18 — 1.6.8: Settings simplification (information architecture only)
+
+Automated (`SettingsPagesTest`, 11 app tests): root order, depth ≤ 2, every stored key reachable,
+shared-key pairs exactly the two documented ones, placement per page, reset grouping/confirmations,
+back navigation. All 1.6.7 tests unchanged.
+
+Manual (no emulator here — not performed):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Open Settings | One card with six rows: Appearance, Accessibility, Privacy & security, Data & reset, Advanced, About — each with a one-line summary and a chevron, no switches |
+| 2 | Appearance | Theme radio list + Dynamic colour; Accent card; Text size + an *Interface ›* row. Interface page: density, animation, tool icons, monospace |
+| 3 | Accessibility | Two groups: *Text & display* (Large text, High contrast, Text labels, Reduce animations) and *Interaction & haptics* (Larger targets, Haptics). Toggle Large text, go to Appearance → Text size shows Large |
+| 4 | Privacy & security | *Privacy* (statement + three switches) and *Private keys* (two switches). No storage/crypto wording anywhere |
+| 5 | Data & reset | *Reset* group (Restore, Reset remembered tool settings, Reset favourites) then *Delete data* group in red (Clear saved RSA keys, Clear everything). Every action still confirms; Clear everything still asks twice; Restore leaves saved keys intact |
+| 6 | Advanced | *Processing* (auto-process, processing time), *Interface* (copy confirmation), *Diagnostics ›*. Diagnostics page: intro sentence, three switches, Reset tool-specific settings |
+| 7 | Back | Hardware/gesture back and the arrow go Diagnostics → Advanced → Settings → main; reopening Settings starts at the root |
+| 8 | TalkBack | Navigation rows read "title, summary, button"; switch rows read "title, subtitle, on/off, switch" |
+| 9 | Large text + Larger touch targets on | No clipped summaries; rows grow, nothing overlaps |
+| 10 | Regression | Universal Decoder, RSA generator/vault, favourites drag — unchanged (no code touched) |

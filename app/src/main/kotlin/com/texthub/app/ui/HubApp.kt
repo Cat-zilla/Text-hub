@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import com.texthub.app.ui.theme.TextHubTheme
+import com.texthub.app.ui.settings.SettingsNavigation
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -61,7 +62,13 @@ fun HubApp(
     val infoState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val overridePickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    BackHandler(enabled = screen == Screen.SETTINGS) { screen = Screen.MAIN }
+    // Settings is one screen with a small page stack: back goes up a level, and out from the root.
+    var settingsNav by remember { mutableStateOf(SettingsNavigation()) }
+    fun settingsBack() {
+        val up = settingsNav.back()
+        if (up != null) settingsNav = up else screen = Screen.MAIN
+    }
+    BackHandler(enabled = screen == Screen.SETTINGS) { settingsBack() }
 
     fun dismissPicker() {
         scope.launch { pickerState.hide() }.invokeOnCompletion { pickerVisible = false }
@@ -141,7 +148,7 @@ fun HubApp(
                         snackbarHostState = snackbarHostState,
                         onOpenPicker = { pickerVisible = true },
                         onOpenInfo = { infoVisible = true },
-                        onSettings = { screen = Screen.SETTINGS },
+                        onSettings = { settingsNav = SettingsNavigation(); screen = Screen.SETTINGS },
                         onDirectionSelected = viewModel::setDirection,
                         onParamChange = viewModel::setParam,
                         onInputChange = viewModel::setInput,
@@ -181,7 +188,9 @@ fun HubApp(
                     Screen.SETTINGS -> SettingsScreen(
                         state = state,
                         snackbarHostState = snackbarHostState,
-                        onBack = { screen = Screen.MAIN },
+                        navigation = settingsNav,
+                        onNavigate = { settingsNav = it },
+                        onBack = { settingsBack() },
                         onThemeSelected = viewModel::setTheme,
                         onAccentSelected = viewModel::setAccent,
                         onAutoProcessChanged = viewModel::setAutoProcess,
