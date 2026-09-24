@@ -51,8 +51,9 @@ class UniversalDecoderProcessor : TextProcessor {
                 sensitive = true,
                 hint = "Only for encrypted input",
                 helper = "Used only when the detected payload is encrypted, and only the kind of " +
-                    "secret that payload needs. Text Hub never guesses, tries or brute-forces a " +
-                    "password, and it is never stored.",
+                    "secret that payload needs. An RSA payload takes the complete PEM key block " +
+                    "(or one of your saved key pairs). Text Hub never guesses, tries or " +
+                    "brute-forces a password or a key, and it is never stored.",
             ),
             ParamSpec(
                 key = UniversalDecoder.PARAM_HASH_CANDIDATE,
@@ -156,8 +157,7 @@ class UniversalDecoderProcessor : TextProcessor {
                 appendLine("Additional information required:")
                 appendLine(diagnosis.candidate.secretKind?.label ?: "key")
                 appendLine()
-                appendLine("Enter it in the Password / key field and analyze again. Text Hub will " +
-                    "not guess it, and the authentication tag or MAC decides whether it is right.")
+                appendLine(secretInstruction(diagnosis.candidate.secretKind))
             }
             is Diagnosis.Choose -> {
                 appendLine("Possible formats")
@@ -213,6 +213,23 @@ class UniversalDecoderProcessor : TextProcessor {
             appendLine("${index + 1}. ${step.label} — ${step.confidence.label} confidence")
             step.note?.let { appendLine("    $it") }
         }
+    }
+
+    /**
+     * How to supply the missing secret, in words that fit its kind: a PEM key is pasted whole (or
+     * picked from the saved key pairs), a password is typed. Never repeats any secret.
+     */
+    private fun secretInstruction(kind: SecretKind?): String = when (kind) {
+        SecretKind.PRIVATE_KEY ->
+            "Paste the complete RSA private key (the whole -----BEGIN PRIVATE KEY----- block) into " +
+                "the key field, or choose one of your saved key pairs, and analyze again. Text Hub " +
+                "will not guess or try keys; the authentication tag decides whether it is right."
+        SecretKind.PUBLIC_KEY ->
+            "Provide the complete RSA public key (the whole -----BEGIN PUBLIC KEY----- block) in " +
+                "the key field and analyze again."
+        else ->
+            "Enter it in the Password / key field and analyze again. Text Hub will not guess it, " +
+                "and the authentication tag or MAC decides whether it is right."
     }
 
     private fun confidenceLabel(stepConfidence: Confidence): String = stepConfidence.label

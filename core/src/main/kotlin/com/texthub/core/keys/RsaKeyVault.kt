@@ -145,6 +145,20 @@ class RsaKeyCollection(
         return true
     }
 
+    /**
+     * "Clear saved RSA keys": removes every record. This is the one operation that empties the
+     * collection, and it exists only behind the explicit, separately confirmed action in Settings -
+     * neither "Restore app preferences" nor any other reset calls it. Safe on an already empty or
+     * damaged collection; returns how many records were removed.
+     */
+    fun deleteAll(): Int {
+        val count = records.size
+        if (count == 0) return 0
+        records.clear()
+        persist()
+        return count
+    }
+
     /** The sealed records of the whole collection, for tests and for the security review. */
     fun storedBytes(): List<ByteArray> = records.map { it.blob }
 

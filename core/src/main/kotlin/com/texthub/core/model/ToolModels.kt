@@ -346,6 +346,20 @@ data class ToolMeta(
     /** Settings shown inline; the rest live under "Additional encryption settings". */
     val primaryParams: List<ParamSpec> get() = params.filter { !it.advanced }
 
+    /** The current non-empty values of this tool's sensitive parameters (never persisted anywhere). */
+    fun sensitiveValues(values: Map<String, String>): Map<String, String> =
+        values.filter { (key, value) -> value.isNotEmpty() && params.any { it.key == key && it.sensitive } }
+
+    /**
+     * The same values with every sensitive parameter back at its default and every other value
+     * untouched - what "clear sensitive fields" means. Unknown keys are left alone.
+     */
+    fun withSensitiveCleared(values: Map<String, String>): Map<String, String> =
+        values.mapValues { (key, value) ->
+            val spec = params.firstOrNull { it.key == key }
+            if (spec != null && spec.sensitive) spec.defaultValue else value
+        }
+
     val advancedParams: List<ParamSpec> get() = params.filter { it.advanced }
 
     /**

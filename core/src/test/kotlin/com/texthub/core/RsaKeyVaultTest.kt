@@ -286,4 +286,29 @@ class RsaKeyVaultTest {
         val other = RsaKeySession().generate(pairA).savedAs("Alpha")
         assertEquals("Alpha", other.savedRecordDeleted("Beta").savedName)
     }
+
+    // ------------------------------------------------------------------ clear saved RSA keys
+
+    @Test
+    fun deleteAllRemovesEveryRecordAndReportsTheCount() {
+        val storage = MemoryStorage()
+        val keys = collection(storage)
+        keys.save("One", pairA, 1)
+        keys.save("Two", pairB, 2)
+        assertEquals(2, keys.deleteAll())
+        assertTrue(keys.keys().isEmpty())
+        // Persisted: a reopened collection is empty too, and the old records are not in the file.
+        assertTrue(RsaKeyCollection(storage, SoftwareCipher()).keys().isEmpty())
+    }
+
+    @Test
+    fun deleteAllOnAnEmptyCollectionIsSafe() {
+        val storage = MemoryStorage()
+        val keys = collection(storage)
+        assertEquals(0, keys.deleteAll())
+        assertNull(storage.bytes)
+        keys.save("One", pairA, 1)
+        assertEquals(1, keys.deleteAll())
+        assertEquals(0, keys.deleteAll())
+    }
 }

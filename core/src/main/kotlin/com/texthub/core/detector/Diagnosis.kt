@@ -35,6 +35,20 @@ enum class SecretKind(val label: String) {
 
     /** The RSA private key that can unwrap this payload. */
     PRIVATE_KEY("RSA private key (PEM)"),
+
+    /**
+     * The RSA public key an operation encrypts *to*. The Universal Decoder only ever decrypts, so
+     * its candidates never ask for one - but the kind exists so that the label can never be wrong
+     * for an RSA operation driven the other way.
+     */
+    PUBLIC_KEY("RSA public key (PEM)");
+
+    /**
+     * True for the two kinds that are PEM key material rather than a typed secret. A password and
+     * an RSA private key are different inputs: this is what lets the app give PEM material a
+     * multi-line editor and a saved-key action without changing how passwords behave.
+     */
+    val isRsaKey: Boolean get() = this == PRIVATE_KEY || this == PUBLIC_KEY
 }
 
 /**
@@ -84,7 +98,7 @@ data class Candidate(
     /**
      * The kind of secret the format needs. Only formats whose tool declares key material have one.
      */
-    val secretKind: SecretKind? get() = if (requiresSecret) secretKindOf(meta) else null
+    val secretKind: SecretKind? get() = if (requiresSecret) secretKindOf(meta, direction) else null
 
     /** The parameter name the target tool expects the secret in ("password", "key"). */
     val secretParam: String? get() = if (requiresSecret) meta.secretSpec?.key else null
@@ -107,10 +121,14 @@ data class Candidate(
 /**
  * What a tool's secret parameter means in the words the diagnosis uses. Key material is only called
  * an "RSA private key" for the tool that actually needs one; every other key is reported as a key.
+ *
+ * For the RSA tool the kind follows the [direction] the candidate is driven in: decrypting (the
+ * only thing the Universal Decoder does) needs the private key, encrypting would need the public
+ * one. The wording is therefore derived from the operation, never hard-coded to "Key".
  */
-fun secretKindOf(meta: ToolMeta): SecretKind = when {
+fun secretKindOf(meta: ToolMeta, direction: Direction = Direction.DECODE): SecretKind = when {
     meta.secretSpec?.kind == ParamKind.PASSWORD -> SecretKind.PASSWORD
-    meta.id == "rsa" -> SecretKind.PRIVATE_KEY
+    meta.id == "rsa" -> if (direction == Direction.DECODE) SecretKind.PRIVATE_KEY else SecretKind.PUBLIC_KEY
     else -> SecretKind.KEY
 }
 
@@ -220,6 +238,28 @@ sealed class Diagnosis {
 
 /** Convenience accessors for the UI. */
 val Diagnosis.isSuccess: Boolean get() = this is Diagnosis.Decoded
+
+/**
+ * The kind of secret this analysis is about, or null when no secret is involved.
+ *
+ *  * [Diagnosis.NeedsSecret]: the secret the payload is still waiting for.
+ *  * [Diagnosis.Failed]: the secret that was tried and refused (a wrong key stays the same *kind*
+ *    of key, so the field must not fall back to a password editor after one failed attempt).
+ *  * [Diagnosis.Decoded]: the secret a layer of the chain was opened with, if any.
+ *
+ * Read from the registered tool of the step or candidate, exactly like [Candidate.secretKind]; the
+ * detection itself does not depend on it (a payload is recognised before any key exists).
+ */
+val Diagnosis.secretKind: SecretKind?
+    get() = when (this) {
+        is Diagnosis.NeedsSecret -> candidate.secretKind
+        is Diagnosis.Failed -> candidate.secretKind
+        is Diagnosis.Decoded -> steps
+            .map { ToolRegistry.metaOf(it.toolId) }
+            .firstOrNull { it.needsKeyMaterial }
+            ?.let { secretKindOf(it, Direction.DECODE) }
+        else -> null
+    }
 val Diagnosis.confidenceOfLastStep: Confidence?
     get() = steps.lastOrNull()?.confidence
 val Diagnosis.usedTools: List<String> get() = steps.map { it.toolId }

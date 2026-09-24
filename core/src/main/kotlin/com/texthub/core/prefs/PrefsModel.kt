@@ -28,6 +28,27 @@ object PrefsKeys {
 
     const val PARAMS_PREFIX = "params_"
 
+    // ---- 1.7.0 settings round. Every key below is an ordinary preference: reset by "Restore app
+    // preferences", kept by "Reset remembered tool settings", and never anything secret.
+    const val DYNAMIC_COLOR = "dynamic_color"
+    const val LAYOUT_DENSITY = "layout_density"
+    const val SHOW_TOOL_ICONS = "show_tool_icons"
+    const val MONOSPACE_OUTPUT = "monospace_output"
+    const val LARGE_TEXT = "large_text"
+    const val UI_ANIMATION = "ui_animation"
+    const val HIGH_CONTRAST = "high_contrast"
+    const val ICON_LABELS = "icon_labels"
+    const val LARGE_TOUCH_TARGETS = "large_touch_targets"
+    const val CLEAR_SECRETS_ON_TOOL_SWITCH = "clear_secrets_on_tool_switch"
+    const val CLEAR_SECRETS_ON_BACKGROUND = "clear_secrets_on_background"
+    const val CONFIRM_PRIVATE_KEY_COPY = "confirm_private_key_copy"
+    const val HIDE_PRIVATE_KEY_PREVIEW = "hide_private_key_preview"
+    const val SENSITIVE_WARNINGS = "sensitive_warnings"
+    const val SHOW_PROCESSING_TIME = "show_processing_time"
+    const val SHOW_TOOL_ID = "show_tool_id"
+    const val SHOW_DETECTION_DETAILS = "show_detection_details"
+    const val SHOW_VALIDATION_DETAILS = "show_validation_details"
+
     /** Everything a tool remembers about itself; removed by "Clear temporary data". */
     fun temporaryKeys(entries: Map<String, String>): List<String> =
         entries.keys.filter { it.startsWith(PARAMS_PREFIX) || it == RECENTS }
@@ -42,7 +63,7 @@ val KEPT_WHEN_CLEARING: List<String> = listOf(
     PrefsKeys.HAPTIC_FEEDBACK,
     PrefsKeys.LAST_TOOL,
     PrefsKeys.FAVORITES_ORDER,
-)
+) + UiSettings.KEYS
 
 private const val SEPARATOR = "|"
 private const val RECENT_LIMIT = 6
@@ -211,6 +232,16 @@ data class PrefsData(val entries: Map<String, String> = emptyMap()) {
     fun restoredToDefaults(): PrefsData = copy(
         entries = entries.filterKeys { it == PrefsKeys.FAVORITES_ORDER },
     )
+
+    /** "Reset favourites": only the favourites list (and its order) is removed. */
+    fun withoutFavorites(): PrefsData = copy(
+        entries = entries.filterKeys { it != PrefsKeys.FAVORITES_ORDER && it != PrefsKeys.FAVORITES_LEGACY },
+    )
+
+    /** The typed view of the 1.7.0 settings stored here (defaults for anything not stored). */
+    fun uiSettings(): UiSettings = UiSettings.from(this)
+
+    fun withUiSettings(settings: UiSettings): PrefsData = settings.writeTo(this)
 
     // ------------------------------------------------------------------ small typed accessors
 
