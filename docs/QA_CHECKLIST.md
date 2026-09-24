@@ -479,3 +479,36 @@ Manual (no emulator here — not performed):
 | 8 | TalkBack | Navigation rows read "title, summary, button"; switch rows read "title, subtitle, on/off, switch" |
 | 9 | Large text + Larger touch targets on | No clipped summaries; rows grow, nothing overlaps |
 | 10 | Regression | Universal Decoder, RSA generator/vault, favourites drag — unchanged (no code touched) |
+
+## Round 19 — 1.6.9: Settings visual hierarchy (presentation only; every setting and behaviour kept)
+
+Automated (`SettingsPagesTest`, rewritten and extended to 15 app tests): six root destinations in
+order; pages are flat (no second-level screens at all — the 1.6.8 Interface and Diagnostics pages
+are folded into their parents as groups); no empty page and no empty group; every row sits in a
+group of its own page; groups and rows appear in the specified order on every page; every stored
+key reachable; shared-key pairs still exactly the two documented ones; private-key controls
+separated from general-privacy controls; diagnostics kept at the quiet end of Advanced; danger zone
+holds exactly *Clear everything*; reset actions keep order, destructive flags and confirmation
+counts (Clear everything = 2); keys/defaults unchanged (saved values re-read identically); every
+destination at most two taps from the root; back returns to the root and then out.
+All other tests unchanged — 544 total, 0 failures.
+
+Manual (no emulator here — not performed):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Open Settings | Six quiet rows on the plain background (tonal icon tile, title, one-line summary, chevron). No card around the list, no switches |
+| 2 | Settings → Appearance | Five groups with small headings — Theme (segmented control), Colour (Accent row with the current swatch and name ›, Dynamic colour switch), Text (Text size — value ›), Interface (Layout density — value ›, two switches), Motion (UI animation — value ›). Scannable at a glance; no cards |
+| 3 | Tap Accent | Radio-style swatch dialog; picking applies immediately and the row shows the new dot + name. With dynamic colour on, the row subtitle says the accent is kept |
+| 4 | Tap Text size / Layout density / UI animation | A quiet radio dialog opens with the explanation sentence on top; the row always shows the current value |
+| 5 | Accessibility | Four one/two-row groups: Text, Motion, Visual, Interaction; the two cross-referenced settings (Large text, Reduce animations) still say so in their subtitles |
+| 6 | Privacy & security | One intro sentence, a plain Privacy group (3 switches), and the Private keys group in a quiet tinted container with a lock icon. Nothing else on the page is tinted |
+| 7 | Data & reset | Data group (3 neutral rows with state subtitles: count/storage size), Saved data (Clear saved RSA keys in red), Danger zone in a red-tinted container (only Clear everything). No trailing Reset/Clear buttons — the whole row is the action |
+| 8 | Every reset action | Same confirmation dialogs as 1.6.8, unchanged text; Clear everything still two steps; Restore leaves favourites and saved keys intact |
+| 9 | Advanced | Processing and Feedback groups first, Diagnostics deliberately quiet (muted heading + intro line, 3 switches), Tool configuration last with the same reset as Data & reset |
+| 10 | About | App name, "Version 1.6.9 (18)", tool count as a small identity block; Build / Developer / Licences as quiet label–value rows; local-only statement at the bottom |
+| 11 | TalkBack | Switch rows read as one switch ("title, subtitle, on/off"); value rows read "title, current value, button"; dialog options are a radio group; nav rows read "title, summary, button" |
+| 12 | Large text + Larger touch targets on | Rows grow, nothing clips or overlaps; value rows keep title left and value right |
+| 13 | Back | Arrow and system back go straight from any page to the root, then leave Settings; reopening starts at the root |
+| 14 | Density → Compact | Group spacing and row padding tighten; switches and rows still ≥48dp |
+| 15 | Regression | Theme still applies instantly; dynamic colour, drag/reorder, RSA vault, Universal Decoder — unchanged (no code touched outside the settings UI) |

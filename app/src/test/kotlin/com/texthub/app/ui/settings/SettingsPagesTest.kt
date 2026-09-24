@@ -10,10 +10,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Settings information architecture after the simplification round: every stored preference
- * is still reachable, nothing is nested deeper than two levels, shared keys are the two documented
- * pairs, the reset actions keep their placement and confirmation count, and back navigation walks
- * up the parent chain and then out.
+ * The Settings information architecture after the visual hierarchy round: every stored preference
+ * is still reachable, pages are flat (no second-level screens at all), every row sits in a labelled
+ * group of its own page in the specified order, shared keys are the two documented pairs, the reset
+ * actions keep their placement and confirmation count, and back navigation returns to the root and
+ * then out.
  */
 class SettingsPagesTest {
 
@@ -30,10 +31,14 @@ class SettingsPagesTest {
         SettingsPage.TOP_LEVEL.forEach { assertEquals(SettingsPage.ROOT, it.parent) }
     }
 
-    @Test fun nothingIsNestedDeeperThanTwoLevels() {
-        SettingsPage.values().forEach { assertTrue("${it.name} is too deep", it.depth <= 2) }
-        assertEquals(listOf(SettingsPage.ROOT, SettingsPage.APPEARANCE, SettingsPage.INTERFACE), SettingsPage.INTERFACE.path)
-        assertEquals(listOf(SettingsPage.ROOT, SettingsPage.ADVANCED, SettingsPage.DIAGNOSTICS), SettingsPage.DIAGNOSTICS.path)
+    @Test fun pagesAreFlatWithNoSecondLevelScreens() {
+        // The redesign flattened Interface and Diagnostics into their parents; nothing re-introduces them.
+        SettingsPage.values().forEach { page ->
+            assertTrue("${page.name} must not be deeper than one level", page.depth <= 1)
+        }
+        SettingsPage.values().filter { it != SettingsPage.ROOT }.forEach { page ->
+            assertEquals(SettingsPage.ROOT, page.parent)
+        }
     }
 
     @Test fun everyPageExceptRootAndAboutHasAtLeastOneRowOrAction() {
@@ -44,12 +49,41 @@ class SettingsPagesTest {
         }
     }
 
-    @Test fun subPagesAreOnlyUsedWhereTheyReduceClutter() {
-        // A second-level page must carry more than two controls; otherwise it is over-nesting.
-        listOf(SettingsPage.INTERFACE, SettingsPage.DIAGNOSTICS).forEach { page ->
-            val count = SettingRow.values().count { it.page == page } + SettingsAction.values().count { it.page == page }
-            assertTrue("${page.name} has only $count controls", count >= 3)
+    @Test fun everyGroupHasContentAndBelongsToItsRowsPage() {
+        SettingsGroup.values().forEach { group ->
+            val rows = SettingRow.of(group).size
+            val actions = SettingsAction.of(group).size
+            assertTrue("${group.name} would be an empty group", rows + actions > 0)
         }
+        SettingRow.values().forEach { row ->
+            assertEquals("${row.name} sits in a group of the wrong page", row.page, row.group.page)
+        }
+        SettingsAction.values().forEach { action ->
+            assertEquals("${action.name} sits in a group of the wrong page", action.page, action.group.page)
+        }
+    }
+
+    @Test fun groupsAppearInTheSpecifiedOrderOnEachPage() {
+        assertEquals(
+            listOf(SettingsGroup.THEME, SettingsGroup.COLOUR, SettingsGroup.TEXT, SettingsGroup.INTERFACE, SettingsGroup.MOTION),
+            SettingsGroup.of(SettingsPage.APPEARANCE),
+        )
+        assertEquals(
+            listOf(SettingsGroup.A11Y_TEXT, SettingsGroup.A11Y_MOTION, SettingsGroup.A11Y_VISUAL, SettingsGroup.A11Y_INTERACTION),
+            SettingsGroup.of(SettingsPage.ACCESSIBILITY),
+        )
+        assertEquals(
+            listOf(SettingsGroup.PRIVACY_GENERAL, SettingsGroup.PRIVATE_KEYS),
+            SettingsGroup.of(SettingsPage.PRIVACY),
+        )
+        assertEquals(
+            listOf(SettingsGroup.DATA_GENERAL, SettingsGroup.SAVED_DATA, SettingsGroup.DANGER_ZONE),
+            SettingsGroup.of(SettingsPage.DATA),
+        )
+        assertEquals(
+            listOf(SettingsGroup.PROCESSING, SettingsGroup.FEEDBACK, SettingsGroup.DIAGNOSTICS, SettingsGroup.TOOL_CONFIGURATION),
+            SettingsGroup.of(SettingsPage.ADVANCED),
+        )
     }
 
     // --------------------------------------------------------------- reachability
@@ -74,26 +108,79 @@ class SettingsPagesTest {
 
     @Test fun placementFollowsTheSpecification() {
         fun on(page: SettingsPage) = SettingRow.values().filter { it.page == page }.toSet()
-        assertEquals(setOf(SettingRow.THEME, SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR, SettingRow.TEXT_SIZE), on(SettingsPage.APPEARANCE))
-        assertEquals(setOf(SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS, SettingRow.MONOSPACE_OUTPUT, SettingRow.UI_ANIMATION), on(SettingsPage.INTERFACE))
         assertEquals(
-            setOf(SettingRow.LARGE_TEXT, SettingRow.REDUCE_ANIMATIONS, SettingRow.HIGH_CONTRAST, SettingRow.ICON_LABELS, SettingRow.LARGE_TOUCH_TARGETS, SettingRow.HAPTICS),
+            setOf(
+                SettingRow.THEME, SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR, SettingRow.TEXT_SIZE,
+                SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS, SettingRow.MONOSPACE_OUTPUT, SettingRow.UI_ANIMATION,
+            ),
+            on(SettingsPage.APPEARANCE),
+        )
+        assertEquals(
+            setOf(
+                SettingRow.LARGE_TEXT, SettingRow.REDUCE_ANIMATIONS, SettingRow.HIGH_CONTRAST,
+                SettingRow.ICON_LABELS, SettingRow.LARGE_TOUCH_TARGETS, SettingRow.HAPTICS,
+            ),
             on(SettingsPage.ACCESSIBILITY),
         )
         assertEquals(
-            setOf(SettingRow.CLEAR_ON_TOOL_SWITCH, SettingRow.CLEAR_ON_BACKGROUND, SettingRow.SENSITIVE_WARNINGS, SettingRow.CONFIRM_PRIVATE_KEY_COPY, SettingRow.HIDE_PRIVATE_KEY_PREVIEW),
+            setOf(
+                SettingRow.SENSITIVE_WARNINGS, SettingRow.CLEAR_ON_TOOL_SWITCH, SettingRow.CLEAR_ON_BACKGROUND,
+                SettingRow.HIDE_PRIVATE_KEY_PREVIEW, SettingRow.CONFIRM_PRIVATE_KEY_COPY,
+            ),
             on(SettingsPage.PRIVACY),
         )
-        assertEquals(setOf(SettingRow.SHOW_TOOL_ID, SettingRow.SHOW_DETECTION_DETAILS, SettingRow.SHOW_VALIDATION_DETAILS), on(SettingsPage.DIAGNOSTICS))
+        assertEquals(
+            setOf(
+                SettingRow.AUTO_PROCESS, SettingRow.SHOW_PROCESSING_TIME, SettingRow.COPY_CONFIRMATION,
+                SettingRow.SHOW_TOOL_ID, SettingRow.SHOW_DETECTION_DETAILS, SettingRow.SHOW_VALIDATION_DETAILS,
+            ),
+            on(SettingsPage.ADVANCED),
+        )
         assertTrue(on(SettingsPage.DATA).isEmpty())
         assertTrue(on(SettingsPage.ABOUT).isEmpty())
         assertTrue(on(SettingsPage.ROOT).isEmpty())
-        // Diagnostics never appear on the root or directly on Advanced.
-        assertFalse(on(SettingsPage.ADVANCED).any { it.prefKey in setOf(PrefsKeys.SHOW_TOOL_ID, PrefsKeys.SHOW_DETECTION_DETAILS, PrefsKeys.SHOW_VALIDATION_DETAILS) })
     }
 
-    @Test fun keysAndDefaultsAreUnchangedByTheRestructure() {
-        // The rows point at the same keys 1.6.7 stored, so saved settings carry over unchanged.
+    @Test fun rowsWithinGroupsAppearInTheSpecifiedOrder() {
+        assertEquals(listOf(SettingRow.THEME), SettingRow.of(SettingsGroup.THEME))
+        assertEquals(listOf(SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR), SettingRow.of(SettingsGroup.COLOUR))
+        assertEquals(
+            listOf(SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS, SettingRow.MONOSPACE_OUTPUT),
+            SettingRow.of(SettingsGroup.INTERFACE),
+        )
+        assertEquals(
+            listOf(SettingRow.LARGE_TOUCH_TARGETS, SettingRow.ICON_LABELS, SettingRow.HAPTICS),
+            SettingRow.of(SettingsGroup.A11Y_INTERACTION),
+        )
+        assertEquals(
+            listOf(SettingRow.SENSITIVE_WARNINGS, SettingRow.CLEAR_ON_TOOL_SWITCH, SettingRow.CLEAR_ON_BACKGROUND),
+            SettingRow.of(SettingsGroup.PRIVACY_GENERAL),
+        )
+        assertEquals(
+            listOf(SettingRow.SHOW_TOOL_ID, SettingRow.SHOW_DETECTION_DETAILS, SettingRow.SHOW_VALIDATION_DETAILS),
+            SettingRow.of(SettingsGroup.DIAGNOSTICS),
+        )
+    }
+
+    @Test fun privateKeyControlsAreSeparatedFromGeneralPrivacy() {
+        val general = SettingRow.of(SettingsGroup.PRIVACY_GENERAL).toSet()
+        val keys = SettingRow.of(SettingsGroup.PRIVATE_KEYS).toSet()
+        assertEquals(setOf(SettingRow.HIDE_PRIVATE_KEY_PREVIEW, SettingRow.CONFIRM_PRIVATE_KEY_COPY), keys)
+        assertTrue(general.none { it.prefKey.contains("private") })
+    }
+
+    @Test fun diagnosticsStaysAtTheQuietEndOfAdvanced() {
+        val groups = SettingsGroup.of(SettingsPage.ADVANCED)
+        // Diagnostics is rendered, but after the everyday groups and before the reset action.
+        assertTrue(groups.indexOf(SettingsGroup.DIAGNOSTICS) > groups.indexOf(SettingsGroup.PROCESSING))
+        assertTrue(groups.indexOf(SettingsGroup.DIAGNOSTICS) > groups.indexOf(SettingsGroup.FEEDBACK))
+        assertEquals(SettingsGroup.TOOL_CONFIGURATION, groups.last())
+        // ...and never leaks onto the root or the more prominent pages.
+        assertTrue(SettingsGroup.DIAGNOSTICS.page == SettingsPage.ADVANCED)
+    }
+
+    @Test fun keysAndDefaultsAreUnchangedByTheRedesign() {
+        // The rows point at the same keys previous versions stored, so saved settings carry over.
         val stored = PrefsData().withUiSettings(UiSettings(largeText = true, showToolId = true, hidePrivateKeyPreview = false))
         val reread = stored.uiSettings()
         assertTrue(reread.largeText); assertTrue(reread.showToolId); assertFalse(reread.hidePrivateKeyPreview)
@@ -118,31 +205,38 @@ class SettingsPagesTest {
         assertEquals(listOf(false, false, false, true, true), data.map { it.destructive })
         assertEquals(2, SettingsAction.CLEAR_EVERYTHING.confirmations)
         SettingsAction.values().forEach { assertTrue(it.confirmations >= 1) }
-        assertEquals(SettingsPage.DIAGNOSTICS, SettingsAction.RESET_TOOL_SETTINGS_FROM_DIAGNOSTICS.page)
-        assertFalse(SettingsAction.RESET_TOOL_SETTINGS_FROM_DIAGNOSTICS.destructive)
+        // The danger zone holds exactly the one heaviest action.
+        assertEquals(listOf(SettingsAction.CLEAR_EVERYTHING), SettingsAction.of(SettingsGroup.DANGER_ZONE))
+        assertEquals(
+            listOf(SettingsAction.RESTORE_PREFERENCES, SettingsAction.RESET_TOOL_SETTINGS, SettingsAction.RESET_FAVORITES),
+            SettingsAction.of(SettingsGroup.DATA_GENERAL),
+        )
+        // The same operation is also offered where troubleshooting happens, still non-destructive.
+        assertEquals(SettingsPage.ADVANCED, SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.page)
+        assertEquals(SettingsGroup.TOOL_CONFIGURATION, SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.group)
+        assertFalse(SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.destructive)
     }
 
     // ----------------------------------------------------------------- navigation
 
-    @Test fun backWalksUpTheParentsAndThenLeaves() {
+    @Test fun backFromAnyPageReturnsToTheRootAndThenLeaves() {
         var nav = SettingsNavigation()
         assertTrue(nav.atRoot)
-        nav = nav.open(SettingsPage.APPEARANCE).open(SettingsPage.INTERFACE)
-        assertEquals(SettingsPage.INTERFACE, nav.page)
-        nav = nav.back()!!
+        nav = nav.open(SettingsPage.APPEARANCE)
         assertEquals(SettingsPage.APPEARANCE, nav.page)
         nav = nav.back()!!
         assertTrue(nav.atRoot)
         assertNull("back at the root means leaving Settings", nav.back())
     }
 
-    @Test fun openingAlwaysStartsAtTheRoot() {
+    @Test fun everyDestinationIsAtMostTwoTapsFromTheRoot() {
         assertEquals(SettingsPage.ROOT, SettingsNavigation().page)
         SettingsPage.values().forEach { page ->
             var nav = SettingsNavigation().open(page)
             var steps = 0
             while (!nav.atRoot) { nav = nav.back()!!; steps++ }
             assertEquals(page.depth, steps)
+            assertTrue("${page.name} is more than one tap deep", steps <= 1)
         }
     }
 }
