@@ -2,7 +2,8 @@
 
 **A tiny, extremely polished Swiss-army knife for text — 74 encoding, cipher, hash and encryption tools in one offline Android app, with a Universal Decoder that tells you what you are looking at.**
 
-<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="Catzilla0" data-color="#5F7FFF" data-emoji="☕" data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>
+<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="Catzilla0" data-color="#5F7FFF" data-emoji="☕"  data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>
+
 
 Text Hub is a native Kotlin/Jetpack Compose application. Pick a method, type or paste text,
 optionally set its parameters, and read the result — copy it, swap it back through the tool, or
