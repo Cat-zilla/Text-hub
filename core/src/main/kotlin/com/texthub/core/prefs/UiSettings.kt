@@ -32,6 +32,28 @@ enum class AnimationMode(val id: String) {
 }
 
 /**
+ * The corner language of the app's reusable surfaces. One Appearance preference, resolved into the
+ * shape tokens the UI uses (see the app's `HubCorners`), so one choice changes the whole app:
+ *
+ *  * [ROUNDED] - the app as it always was;
+ *  * [SLIGHT] - a noticeably smaller radius on the same surfaces;
+ *  * [SQUARE] - pointy, square corners.
+ *
+ * Deliberately *not* applied to shapes whose geometry has a meaning of its own: circular icon
+ * buttons, switches, radio buttons, indicators, and the pills used for chips and badges. Those stay
+ * what they are whatever this preference says.
+ */
+enum class CornerStyle(val id: String) {
+    ROUNDED("rounded"),
+    SLIGHT("slight"),
+    SQUARE("square");
+
+    companion object {
+        fun fromId(id: String?): CornerStyle = values().firstOrNull { it.id == id } ?: ROUNDED
+    }
+}
+
+/**
  * The settings added in the 1.7.0 settings round, as one plain value with its defaults, read from
  * and written to [PrefsData] so the semantics can be unit tested without Android.
  *
@@ -52,6 +74,8 @@ data class UiSettings(
     val monospaceOutput: Boolean = true,
     val largeText: Boolean = false,
     val animation: AnimationMode = AnimationMode.FULL,
+    /** How rounded the app's reusable surfaces are; the default is the app as it always was. */
+    val cornerStyle: CornerStyle = CornerStyle.ROUNDED,
     // Accessibility
     val highContrast: Boolean = false,
     val iconLabels: Boolean = false,
@@ -91,6 +115,7 @@ data class UiSettings(
         .with(PrefsKeys.MONOSPACE_OUTPUT, monospaceOutput.toString())
         .with(PrefsKeys.LARGE_TEXT, largeText.toString())
         .with(PrefsKeys.UI_ANIMATION, animation.id)
+        .with(PrefsKeys.CORNER_STYLE, cornerStyle.id)
         .with(PrefsKeys.HIGH_CONTRAST, highContrast.toString())
         .with(PrefsKeys.ICON_LABELS, iconLabels.toString())
         .with(PrefsKeys.LARGE_TOUCH_TARGETS, largeTouchTargets.toString())
@@ -111,6 +136,7 @@ data class UiSettings(
         val KEYS: List<String> = listOf(
             PrefsKeys.DYNAMIC_COLOR, PrefsKeys.LAYOUT_DENSITY, PrefsKeys.SHOW_TOOL_ICONS,
             PrefsKeys.MONOSPACE_OUTPUT, PrefsKeys.LARGE_TEXT, PrefsKeys.UI_ANIMATION,
+            PrefsKeys.CORNER_STYLE,
             PrefsKeys.HIGH_CONTRAST, PrefsKeys.ICON_LABELS, PrefsKeys.LARGE_TOUCH_TARGETS,
             PrefsKeys.CLEAR_SECRETS_ON_TOOL_SWITCH, PrefsKeys.CLEAR_SECRETS_ON_BACKGROUND,
             PrefsKeys.CONFIRM_PRIVATE_KEY_COPY, PrefsKeys.HIDE_PRIVATE_KEY_PREVIEW,
@@ -127,6 +153,7 @@ data class UiSettings(
                 monospaceOutput = data.bool(PrefsKeys.MONOSPACE_OUTPUT, d.monospaceOutput),
                 largeText = data.bool(PrefsKeys.LARGE_TEXT, d.largeText),
                 animation = AnimationMode.fromId(data.string(PrefsKeys.UI_ANIMATION)),
+                cornerStyle = CornerStyle.fromId(data.string(PrefsKeys.CORNER_STYLE)),
                 highContrast = data.bool(PrefsKeys.HIGH_CONTRAST, d.highContrast),
                 iconLabels = data.bool(PrefsKeys.ICON_LABELS, d.iconLabels),
                 largeTouchTargets = data.bool(PrefsKeys.LARGE_TOUCH_TARGETS, d.largeTouchTargets),

@@ -36,6 +36,8 @@ object PrefsKeys {
     const val MONOSPACE_OUTPUT = "monospace_output"
     const val LARGE_TEXT = "large_text"
     const val UI_ANIMATION = "ui_animation"
+    /** Corner style: rounded / slightly rounded / square. An ordinary appearance preference. */
+    const val CORNER_STYLE = "corner_style"
     const val HIGH_CONTRAST = "high_contrast"
     const val ICON_LABELS = "icon_labels"
     const val LARGE_TOUCH_TARGETS = "large_touch_targets"
