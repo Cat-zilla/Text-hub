@@ -1,6 +1,7 @@
 package com.texthub.core
 
 import com.texthub.core.prefs.AnimationMode
+import com.texthub.core.prefs.CornerStyle
 import com.texthub.core.prefs.KEPT_WHEN_CLEARING
 import com.texthub.core.prefs.LayoutDensity
 import com.texthub.core.prefs.PrefsData
@@ -30,6 +31,7 @@ class UiSettingsTest {
         assertTrue("the output box has always been monospace", d.monospaceOutput)
         assertFalse(d.largeText)
         assertEquals(AnimationMode.FULL, d.animation)
+        assertEquals("the app as it always was", CornerStyle.ROUNDED, d.cornerStyle)
         assertFalse(d.highContrast)
         assertFalse(d.iconLabels)
         assertFalse(d.largeTouchTargets)
@@ -53,18 +55,21 @@ class UiSettingsTest {
             PrefsKeys.LAYOUT_DENSITY to "gigantic",
             PrefsKeys.UI_ANIMATION to "bouncy",
             PrefsKeys.DYNAMIC_COLOR to "maybe",
+            PrefsKeys.CORNER_STYLE to "octagonal",
         )
         val s = stored.uiSettings()
         assertEquals(LayoutDensity.COMFORTABLE, s.density)
         assertEquals(AnimationMode.FULL, s.animation)
         assertFalse(s.dynamicColor)
+        assertEquals(CornerStyle.ROUNDED, s.cornerStyle)
     }
 
     // ---------------------------------------------------------------------- persistence
 
     private val everythingFlipped = UiSettings(
         dynamicColor = true, density = LayoutDensity.COMPACT, showToolIcons = false, monospaceOutput = false,
-        largeText = true, animation = AnimationMode.OFF, highContrast = true, iconLabels = true,
+        largeText = true, animation = AnimationMode.OFF, cornerStyle = CornerStyle.SQUARE,
+        highContrast = true, iconLabels = true,
         largeTouchTargets = true, clearSecretsOnToolSwitch = false, clearSecretsOnBackground = true,
         confirmPrivateKeyCopy = false, hidePrivateKeyPreview = false, sensitiveWarnings = false,
         showProcessingTime = true, showToolId = true, showDetectionDetails = true, showValidationDetails = true,
@@ -91,12 +96,14 @@ class UiSettingsTest {
     @Test fun theKeyListCoversEveryStoredKey() {
         val written = PrefsData().withUiSettings(everythingFlipped).entries.keys
         assertEquals(written, UiSettings.KEYS.toSet())
-        assertEquals(18, UiSettings.KEYS.size)
+        assertEquals(19, UiSettings.KEYS.size)
+        assertTrue(PrefsKeys.CORNER_STYLE in UiSettings.KEYS)
     }
 
     @Test fun storedValuesContainNoTextOrSecretShapedData() {
         val values = PrefsData().withUiSettings(everythingFlipped).entries.values
-        val allowed = setOf("true", "false") + LayoutDensity.values().map { it.id } + AnimationMode.values().map { it.id }
+        val allowed = setOf("true", "false") + LayoutDensity.values().map { it.id } +
+            AnimationMode.values().map { it.id } + CornerStyle.values().map { it.id }
         values.forEach { assertTrue("unexpected stored value '$it'", it in allowed) }
     }
 
@@ -106,6 +113,7 @@ class UiSettingsTest {
         val stored = data(PrefsKeys.FAVORITES_ORDER to "aes|base64|vigenere").withUiSettings(everythingFlipped)
         val after = stored.restoredToDefaults()
         assertEquals(UiSettings.DEFAULT, after.uiSettings())
+        assertEquals("the corner style returns to Rounded", CornerStyle.ROUNDED, after.uiSettings().cornerStyle)
         assertEquals(listOf("aes", "base64", "vigenere"), after.favorites())
         assertEquals(setOf(PrefsKeys.FAVORITES_ORDER), after.entries.keys)
     }
@@ -117,6 +125,7 @@ class UiSettingsTest {
         ).withUiSettings(everythingFlipped)
         val after = stored.clearTemporary()
         assertEquals(everythingFlipped, after.uiSettings())
+        assertEquals("reset remembered tool settings leaves the corner style alone", CornerStyle.SQUARE, after.uiSettings().cornerStyle)
         assertNull(after.string(PrefsKeys.RECENTS))
         assertNull(after.string("${PrefsKeys.PARAMS_PREFIX}aes"))
         UiSettings.KEYS.forEach { assertTrue("$it must be kept when clearing", it in KEPT_WHEN_CLEARING) }
@@ -132,6 +141,7 @@ class UiSettingsTest {
         ).withUiSettings(everythingFlipped)
         val after = stored.withoutFavorites()
         assertTrue(after.favorites().isEmpty())
+        assertEquals("reset favourites leaves the corner style alone", CornerStyle.SQUARE, after.uiSettings().cornerStyle)
         assertEquals("aes", after.string(PrefsKeys.RECENTS))
         assertEquals("AMOLED", after.string(PrefsKeys.THEME))
         assertEquals("keySize=128", after.string("${PrefsKeys.PARAMS_PREFIX}aes"))
@@ -166,7 +176,9 @@ class UiSettingsTest {
     @Test fun idsRoundTripForEveryEnum() {
         LayoutDensity.values().forEach { assertEquals(it, LayoutDensity.fromId(it.id)) }
         AnimationMode.values().forEach { assertEquals(it, AnimationMode.fromId(it.id)) }
+        CornerStyle.values().forEach { assertEquals(it, CornerStyle.fromId(it.id)) }
         assertEquals(LayoutDensity.COMFORTABLE, LayoutDensity.fromId(null))
         assertEquals(AnimationMode.FULL, AnimationMode.fromId(null))
+        assertEquals(CornerStyle.ROUNDED, CornerStyle.fromId(null))
     }
 }

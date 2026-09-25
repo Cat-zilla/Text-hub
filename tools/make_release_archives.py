@@ -29,7 +29,7 @@ import os
 import re
 import zipfile
 
-VERSION = "1.6.9"
+VERSION = "1.7.0"
 ROOT = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOME = os.path.dirname(ROOT)
 PUBLIC_ZIP = os.path.join(HOME, "TextHub-%s-source.zip" % VERSION)
@@ -72,6 +72,15 @@ SECRET_PATTERNS = (
 # Reported for transparency, not an offence: code that *handles* PEM blocks.
 PEM_HEADER = re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 
+
+REQUIRED_1_7_0 = (
+    "tools/assets/app-icon-source.png",
+    "tools/make_app_icon.py",
+    "docs/RELEASE_REPORT_1.7.0.md",
+    "app/src/main/res/drawable-nodpi/ic_launcher_background.png",
+    "app/src/main/res/drawable-nodpi/ic_launcher_foreground.png",
+    "app/src/main/res/drawable-nodpi/ic_launcher_monochrome.png",
+)
 REQUIRED_IN_PUBLIC = (
     "README.md",
     "app/build.gradle.kts",
@@ -125,6 +134,9 @@ def main():
         written.append(rel)
 
     for required in REQUIRED_IN_PUBLIC:
+        assert required in written, "missing from the source archive: " + required
+    for required in REQUIRED_1_7_0:
+        assert required in written, "missing 1.7.0 material from the source archive: " + required
         assert required in written, "missing from the source archive: " + required
 
     # Belt and braces: nothing in the set may be signing material.

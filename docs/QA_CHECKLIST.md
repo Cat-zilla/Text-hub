@@ -512,3 +512,47 @@ Manual (no emulator here — not performed):
 | 13 | Back | Arrow and system back go straight from any page to the root, then leave Settings; reopening starts at the root |
 | 14 | Density → Compact | Group spacing and row padding tighten; switches and rows still ≥48dp |
 | 15 | Regression | Theme still applies instantly; dynamic colour, drag/reorder, RSA vault, Universal Decoder — unchanged (no code touched outside the settings UI) |
+
+## Round 20 — 1.7.0: Corner style, new launcher icon, Buy-me-a-coffee support action
+
+Automated (`CornerStyleTest` core = 13, `HubCornersTest` app = 7, `SupportActionTest` app = 7,
+`NoNetworkImplementationTest` app = 6, plus the extended `UiSettingsTest` and `SettingsPagesTest`):
+
+- **Corner style** — default Rounded; Rounded / Slightly rounded / Square all selectable; each
+  persists as `corner_style`; an unknown id falls back to Rounded; "Restore app preferences"
+  resets it to Rounded; "Reset remembered tool settings", "Reset favourites" and "Clear saved RSA
+  keys" do not touch it; "Clear everything" follows the existing preference reset. The three radii
+  tables (`radiiOf`) make Rounded equal to the previous app, Slightly reduced strictly smaller on
+  every token, and Square zero on every non-pill token; `hubShapesFor` feeds `MaterialTheme.shapes`
+  so cards/groups/dialogs/rows follow the preference. Corner style is one row on Appearance
+  (Interface group) — no new Settings page (destinations stay six), and it appears on no other page.
+- **Support action** — exact URL `https://www.buymeacoffee.com/Catzilla0`; https/absolute/no
+  tracking parameters; shown on exactly the Settings root and About, and nowhere else; an external
+  `ACTION_VIEW` browser intent; no WebView, no network client, no remote image loading, no
+  analytics/telemetry, no logging (scanned over the real sources); graceful when no browser exists.
+- **No INTERNET permission** — the manifest still removes it; no other permission was added.
+- All existing regression tests unchanged (weakened/deleted: none). Totals: 478 core + 104 app =
+  582, 0 failures. `lintDebug` 0 errors.
+
+Build: `assembleDebug` + `assembleRelease` green; release APK signed with the unchanged
+`texthub-release.jks` (SHA-256 `CC:69:D4:…:82:B1`); package `com.texthub.app`; `versionName 1.7.0`,
+`versionCode 19`; 74 tools; no INTERNET permission; no WebView.
+
+Manual (no emulator here — not performed; do these on a device):
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 1 | Install the 1.7.0 APK over 1.6.9 | Installs as an update; preferences, favourites and saved keys survive |
+| 2 | Settings → Appearance → Corner style | Shows a value row "Corner style — Rounded ›" in the Interface group, above Layout density |
+| 3 | Tap it | A quiet radio dialog: Rounded / Slightly rounded / Square. Picking applies and closes; the row shows the new value |
+| 4 | Main screen with each style | Cards, buttons, input/output fields, chips and the picker sheet visibly change corner radius; Rounded looks exactly like before |
+| 5 | Circular controls | Icon buttons, switches, radio buttons, accent swatch and the drag handle stay circular in every style |
+| 6 | Theme + accent sweep | The corner language holds across System/Light/Dark/AMOLED, dynamic colour and every accent |
+| 7 | Data & reset → Restore app preferences | Corner style returns to Rounded; the other resets leave it alone |
+| 8 | Launcher | Home screen, recents and the round icon all show the new icon; nothing is cropped or distorted |
+| 9 | Settings root | "☕ Buy me a coffee — Support the development of Text Hub" sits at the bottom, spaced below the six destinations |
+| 10 | About | The same support row sits at the bottom, below the local-only statement |
+| 11 | Other pages | Appearance, Accessibility, Privacy & security, Data & reset, Advanced, tools, Universal Decoder, picker — none show the support action |
+| 12 | Tap the support row | The user's browser opens `https://www.buymeacoffee.com/Catzilla0`; nothing loads inside Text Hub |
+| 13 | TalkBack | Corner style choices announce "Rounded / Slightly rounded / Square"; the support row announces "Buy me a coffee. Opens the donation page in your browser." |
+| 14 | Large text + larger touch targets | The new rows grow like every other row; nothing clips or overlaps |

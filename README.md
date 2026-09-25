@@ -15,9 +15,9 @@ Encode • Decode • Transform
 
 | | |
 | --- | --- |
-| Version | 1.6.9 (versionCode 18) |
+| Version | 1.7.0 (versionCode 19) |
 | Tools | 74, in 6 categories (audited: see §9) |
-| Tests | 544 unit tests, all green (465 `:core:test` + 79 `:app:testDebugUnitTest`) |
+| Tests | 582 unit tests, all green (478 `:core:test` + 104 `:app:testDebugUnitTest`) |
 | Platform | Android 7.0+ (minSdk 24), targetSdk 34, compileSdk 34 |
 | Language / UI | Kotlin 1.9.22, Jetpack Compose (BOM 2023.10.01), Material 3 |
 | Build | Gradle 8.2, Android Gradle Plugin 8.1.4, JDK 17 |
@@ -357,14 +357,15 @@ automatically. Rules for new tools:
 Requirements: **JDK 17**, **Android SDK platform 34** + **build-tools 34.0.0**. Gradle 8.2 is used
 through the wrapper.
 There is also `tools/install-toolchain.sh`, which installs a JDK, Gradle and the SDK from scratch on
-a bare machine (useful for CI or a fresh sandbox), and `tools/make_legacy_icons.py`, which
-regenerates the pre-adaptive launcher PNGs.
+a bare machine (useful for CI or a fresh sandbox). The 1.7.0 icon pipeline is
+`tools/make_app_icon.py`, which builds the adaptive + legacy launcher icons from
+`tools/assets/app-icon-source.png`.
 
 ```bash
 export JAVA_HOME=/path/to/jdk-17
 export ANDROID_HOME=/path/to/Android/Sdk      # or set sdk.dir in local.properties
 
-./gradlew :core:test             # 246 unit tests
+./gradlew :core:test             # 478 unit tests
 ./gradlew :app:assembleDebug     # debug APK
 ./gradlew :app:assembleRelease   # signed release APK
 ./gradlew :app:installDebug      # install on a connected device
@@ -385,8 +386,8 @@ Notes:
 
 ## 8. Testing
 
-`./gradlew :core:test` runs **379 unit tests** in `core/src/test/kotlin/com/texthub/core/`, and
-`./gradlew :app:testDebugUnitTest` adds **39** for the app layer (418 in total, all green):
+`./gradlew :core:test` runs **478 unit tests** in `core/src/test/kotlin/com/texthub/core/`, and
+`./gradlew :app:testDebugUnitTest` adds **104** for the app layer (582 in total, all green):
 
 | Test class | Tests | Coverage |
 | --- | --- | --- |
@@ -409,6 +410,10 @@ Notes:
 | `UiSettingsTest` (1.6.7) | 14 | The settings model: defaults, round trip, unknown values, restore/reset semantics (favourites kept, settings kept by "reset remembered tool settings", favourites-only reset), one source of truth for Large text / Reduce animations |
 | `SensitiveFieldClearingTest` (1.6.7) | 6 | "Clear sensitive fields" over the real registry: only sensitive parameters reset, unknown keys untouched, idempotent, no secret survives, every PASSWORD parameter declared sensitive |
 | `RsaKeyVaultTest` (+2 in 1.6.7) | 23 | Adds `deleteAll`: every record removed and persisted, count reported, safe on an empty collection |
+| `CornerStyleTest` (1.7.0) | 13 | The new Corner style preference: the three values, Rounded as the default, id round trips, unknown-id fallback, store round trip, that writing it leaves other preferences alone, the key is kept when clearing temporary data, and that only "Restore app preferences" resets it while the other resets leave it untouched |
+| `HubCornersTest` (app, 1.7.0) | 7 | The centralized shape system: the three radii tables (Rounded ≈ the app as-was, Slightly rounded strictly smaller, Square is 0), chips staying a pill until Square, and what `hubShapesFor` hands to `MaterialTheme` |
+| `SupportActionTest` (app, 1.7.0) | 7 | The support action: the exact `https://www.buymeacoffee.com/Catzilla0` URL, https/absolute/no tracking parameters, shown on exactly the Settings root and About, an external `ACTION_VIEW` browser action, and no per-user state |
+| `NoNetworkImplementationTest` (app, 1.7.0) | 6 | Reads the real sources: no INTERNET permission, no WebView, no network client/socket, no remote image/analytics/telemetry, no logging of user data, and the support action only builds a browser intent |
 
 `RegistryTest` iterates over the *whole* registry, so a newly added tool is immediately covered by
 round-trip, classification, documentation and error-message checks. JUnit XML reports land in
@@ -536,8 +541,9 @@ TextHub/
 │       │   ├── ui/                      HubApp, MainScreen, AnalysisCard (the Universal
 │       │   │                            Decoder card), ToolPickerSheet (favourites drag),
 │       │   │                            DragReorder (the drag arithmetic + drop mapping),
-│       │   │                            ToolInfoSheet, SettingsScreen, components,
-│       │   │                            theme/ (colours, accents, type, spacing)
+│       │   │                            ToolInfoSheet, SettingsScreen, components, settings/,
+│       │   │                            support/ and theme/ (colours, accents, type, the
+│       │   │                            corner/shape system - theme/Shapes.kt)
 │       │   ├── viewmodel/HubViewModel.kt   single StateFlow of HubUiState
 │       │   └── prefs/AppPreferences.kt     harmless UI preferences only
 │       └── res/                         strings, themes, adaptive launcher icon
@@ -546,11 +552,12 @@ TextHub/
 │   ├── UNIVERSAL_DECODER.md             detection, confidence, limits, drag ordering
 │   ├── PRIVACY.md                       what is stored, what is never stored
 │   ├── QA_CHECKLIST.md                  verification checklist for each round
+│   ├── RELEASE_REPORT_1.7.0.md          what 1.7.0 changed and how it was verified
 │   ├── SIGNING.md                       keystore, fingerprints, shipping updates (private archive)
 │   └── TOOLS.md                         full tool reference with worked examples
 ├── tools/
 │   ├── install-toolchain.sh             JDK + Gradle + Android SDK on a bare machine
-│   ├── make_legacy_icons.py             regenerates the pre-adaptive launcher PNGs
+│   ├── make_app_icon.py                builds the adaptive + legacy launcher icon from tools/assets/app-icon-source.png
 │   └── make_release_archives.py         builds the public source archive and the private
 │                                        signing archive, and scans the public one for secrets
 ├── build.gradle.kts, settings.gradle.kts, gradle.properties
