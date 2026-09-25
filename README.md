@@ -384,47 +384,6 @@ Notes:
 
 ---
 
-## 8. Testing
-
-`./gradlew :core:test` runs **478 unit tests** in `core/src/test/kotlin/com/texthub/core/`, and
-`./gradlew :app:testDebugUnitTest` adds **104** for the app layer (582 in total, all green):
-
-| Test class | Tests | Coverage |
-| --- | --- | --- |
-| `BaseFamilyTest` | 24 | Base64/32/58/85: ASCII, Unicode, empty input, RFC 4648 vectors, partial blocks, `z` compression, Z85 vectors, leading zero bytes, invalid input, URL-safe variant, alternate alphabets |
-| `TextEncodingsTest` | 28 | URL (spaces, symbols, Unicode, invalid escapes), Hex, Binary, ASCII (incl. non-ASCII rejection), Decimal, Octal, Unicode code points (BMP, emoji above U+FFFF, surrogates) |
-| `SignalEncodingsTest` | 16 | Morse (letters, digits, punctuation, invalid symbols, word separators); Baudot/ITA2 (letters, figures, shifts, spaces, named controls, round trips, invalid groups, ITA2 vs US TTY) |
-| `ClassicalCipherTest` | 50 | Caesar, ROT13/18/47, Atbash, Vigenère (`LEMON`/`ATTACKATDAWN`), XOR, Substitution, Bacon, A1Z26, Rail Fence, Affine, Playfair, Columnar, Reverse and more |
-| `AesGcmTest` | 15 | Round trip, Unicode, empty input, wrong password, tampered ciphertext/IV, truncation, payload layout, fresh salt/nonce per message, PBKDF2 cross-checked against `SecretKeyFactory` |
-| `NewToolsTest` | 37 | Base45 (RFC 9285 vector), Quoted-Printable, HTML entities, Unicode escapes, NATO, Leetspeak, Beaufort, Autokey, Gronsfeld, Hill 2×2, Bifid, Polybius, line tools, case converter |
-| `NewTools2Test` | 46 | AES key sizes, hashes (MD5/SHA-1/256/512 + Base64 form), HMAC vectors, PBKDF2 format and verification, CRC-32/Adler-32, Base91, Punycode (`münchen` → `mnchen-3ya`), Roman numerals, UTF-16/UTF-32 views, hex dump, Hill 3×3, Porta, Trifid, Scytale, ADFGX, Enigma (`BDZGO`, `EWTYX`, `RXWKBV`, reciprocity), custom-alphabet Vigenère, JSON, regex, diff, statistics, JWT |
-| `SecureToolsTest` | 15 | AES-GCM and AES-CBC at 128/192/256 through the `keySize` setting (round trip, size detected on decrypt, one AES tool per mode), AES-CTR (all sizes, tamper, wrong password, non-determinism), raw-key AES-GCM (Base64 and hex keys, wrong length/value), RSA hybrid (2048-bit round trip, ~2 kB of text, wrong private key, tampering, PEM/PKCS#1 mistakes), key generation |
-| `RegistryTest` | 15 | Unique ids, every tool documented and classified, only the six authenticated tools may claim security, sensitive parameters flagged, search behaviour, round trip of every tool, Unicode round trips, friendly error messages (no stack traces), direction swap |
-| `ToolAuditTest` | 12 | Sweeps **every** registered tool: choice/number parameters, default maps, sensitive flags, friendliness for ten unusual inputs in both directions, searchability by id and name, security-claim discipline, documentation coverage, key-size enforcement, and regression tests for the bugs found by the audit |
-| `ToolAuditReportTest` | 1 | Writes `core/build/tool-audit.txt`: a per-tool report (id, category, parameters, behaviour on a sample, round trip) for reviewing the whole registry at once |
-| `UniversalDecoderTest` | 38 | The whole contract of the new tool: registration, permanent first position and the absence of any cryptography of its own; every deterministic format decoded through its own tool; all Text Hub envelopes (AES-GCM, AES-CBC+HMAC, ChaCha20, AES-CTR+HMAC, raw-key GCM, RSA hybrid, OpenSSL, JWE); wrong password, truncated payload, invalid envelope, wrong key size and authentication failure; digests as one-way; ambiguity as candidates; nested chains with depth and cycle limits; empty/random/malformed/oversized input; large input; and no secret or plaintext in any diagnosis |
-| `PrefsModelTest` (extended) | 15 | Adds the drag store: moving a favourite by id in front of another row, dropping at the end, refusing an anchor that is not on screen, and "clear temporary data" never touching the order |
-| `DragReorderTest` (app) | 39 | The drag arithmetic *and* the mapping: the A B C D E matrix (every row to every position), the displayed slot equal to the stored position, the rows sliding exactly one row aside, the leftover settle distance, clamping and dead zones, filtered favourites moving the right entry, rapid consecutive drags and cancellations, and the smooth-motion rules - the same auto-scroll speed at 60 Hz and 120 Hz, a capped catch-up after a stalled frame, a slow drag that does not move until 60% of a row is covered, a fast drag that lands under the finger, hovering on a boundary without flicker, and the offset absorbing exactly what was scrolled |
-| `UniversalDecoderDispatchTest` | 19 | The Universal Decoder through the *production* path (registered tool -> registry -> processing engine): encode "Hello TextHub" -> analyse -> decode, an encoding that never asks for a secret and never reaches a cipher check, no path in the whole corpus that reports a cipher-settings problem, parameter torture over every deterministic and classical tool, the registry accounting matrix, candidates that only ever name registered tools, and the session-only manual override |
-| `SettingsPagesTest` (app, 1.6.9) | 15 | The Settings information architecture: six root destinations, every page flat (no second-level screens at all), every row in a labelled group of its own page in the specified order, every stored preference reachable from a row, the two documented shared-key pairs (Text size/Large text, UI animation/Reduce animations), placement per page, private-key controls separated from general privacy, diagnostics kept at the quiet end of Advanced, reset actions' grouping, destructive flags and confirmation counts, every destination at most two taps away, back navigation to the root and out |
-| `UiSettingsTest` (1.6.7) | 14 | The settings model: defaults, round trip, unknown values, restore/reset semantics (favourites kept, settings kept by "reset remembered tool settings", favourites-only reset), one source of truth for Large text / Reduce animations |
-| `SensitiveFieldClearingTest` (1.6.7) | 6 | "Clear sensitive fields" over the real registry: only sensitive parameters reset, unknown keys untouched, idempotent, no secret survives, every PASSWORD parameter declared sensitive |
-| `RsaKeyVaultTest` (+2 in 1.6.7) | 23 | Adds `deleteAll`: every record removed and persisted, count reported, safe on an empty collection |
-| `CornerStyleTest` (1.7.0) | 13 | The new Corner style preference: the three values, Rounded as the default, id round trips, unknown-id fallback, store round trip, that writing it leaves other preferences alone, the key is kept when clearing temporary data, and that only "Restore app preferences" resets it while the other resets leave it untouched |
-| `HubCornersTest` (app, 1.7.0) | 7 | The centralized shape system: the three radii tables (Rounded ≈ the app as-was, Slightly rounded strictly smaller, Square is 0), chips staying a pill until Square, and what `hubShapesFor` hands to `MaterialTheme` |
-| `SupportActionTest` (app, 1.7.0) | 7 | The support action: the exact `https://www.buymeacoffee.com/Catzilla0` URL, https/absolute/no tracking parameters, shown on exactly the Settings root and About, an external `ACTION_VIEW` browser action, and no per-user state |
-| `NoNetworkImplementationTest` (app, 1.7.0) | 6 | Reads the real sources: no INTERNET permission, no WebView, no network client/socket, no remote image/analytics/telemetry, no logging of user data, and the support action only builds a browser intent |
-
-`RegistryTest` iterates over the *whole* registry, so a newly added tool is immediately covered by
-round-trip, classification, documentation and error-message checks. JUnit XML reports land in
-`core/build/test-results/test/`.
-
-Outside the sandbox, one manual pass is worth doing on a device: open the picker and scroll to the
-end, switch accents, generate a key pair with RSA and check the icon on the home screen. The
-device script lives in [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md), and [`docs/RELEASE_REPORT_1.6.0.md`](docs/RELEASE_REPORT_1.6.0.md) records what this release changed, what was verified with tooling and what could not be verified without a device.
-
----
-
 ## 9. Privacy behaviour
 
 * **No permissions.** The manifest declares no `uses-permission` entries — the `INTERNET`
