@@ -1,5 +1,6 @@
 package com.texthub.app.ui.settings
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,9 +18,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.LocalCafe
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -49,6 +50,7 @@ import com.texthub.app.R
 import com.texthub.app.ui.theme.AccentOption
 import com.texthub.app.ui.theme.HubPalette
 import com.texthub.app.ui.theme.LocalUiSettings
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.app.ui.theme.touchTargetMin
@@ -311,7 +313,7 @@ internal fun SettingsAccentRow(
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = CircleShape,
+                    shape = HubCorners.circle,
                     color = accent.swatch(dark),
                     modifier = Modifier.size(14.dp),
                 ) {}
@@ -422,6 +424,66 @@ internal fun SettingsInfoRow(label: String, value: String) {
             color = mutedTextColor,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+// --------------------------------------------------------------- support action
+
+/**
+ * The support action: "Buy me a coffee", shown at the bottom of the Settings root and of About.
+ *
+ * Deliberately the quietest button in Settings - an outlined row, no filled surface, no badge, no
+ * colour shouting - so it is noticeable to someone looking for it and invisible to someone
+ * scanning past it. It uses the app's own tokens throughout: the shape system (so it follows the
+ * Corner style preference), the touch-target minimum, the type scale, the accent for the title and
+ * the muted colour for the subtitle.
+ *
+ * It is a native action only: no WebView, no network request, no remote image and no stored state
+ * (see [com.texthub.app.ui.support.SupportAction]).
+ */
+@Composable
+internal fun SettingsSupportRow(
+    title: String,
+    subtitle: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = touchTargetMin)
+            .clip(HubCorners.button)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f), HubCorners.button)
+            .clickable(role = Role.Button, onClick = onClick)
+            // One merged node with one clear sentence, so a screen reader announces the action
+            // and what it will do - never the URL and never the two visual lines separately.
+            .semantics(mergeDescendants = true) { this.contentDescription = contentDescription }
+            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // A Material icon that ships inside the APK: no remote image is ever loaded.
+        Icon(
+            Icons.Outlined.LocalCafe,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(Spacing.md))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedTextColor,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = mutedTextColor,
+            modifier = Modifier.size(18.dp),
         )
     }
 }
@@ -537,7 +599,7 @@ private fun AccentSwatch(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
-            shape = CircleShape,
+            shape = HubCorners.circle,
             color = accent.swatch(dark),
             border = if (selected) {
                 androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.onBackground)

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
@@ -33,6 +32,7 @@ import com.texthub.app.R
 import com.texthub.app.ui.components.ClassificationChip
 import com.texthub.app.ui.components.HubDivider
 import com.texthub.app.ui.components.ToolMonogram
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.core.model.ToolMeta
@@ -47,13 +47,13 @@ fun ToolInfoSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        shape = HubCorners.sheetTop,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = {
             Surface(
                 modifier = Modifier.padding(vertical = 10.dp),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f),
-                shape = RoundedCornerShape(50),
+                shape = HubCorners.circle,
             ) {
                 Box(Modifier.size(width = 36.dp, height = 4.dp))
             }

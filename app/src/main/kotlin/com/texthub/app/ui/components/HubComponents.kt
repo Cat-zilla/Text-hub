@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Remove
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.texthub.app.R
 import com.texthub.app.ui.theme.Density
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.decorativeSpec
 import com.texthub.app.ui.theme.touchTargetMin
@@ -109,7 +109,7 @@ fun ToolMonogram(
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(HubCorners.monogram)
             .background(container),
         contentAlignment = Alignment.Center,
     ) {
@@ -133,7 +133,7 @@ fun ClassificationChip(classification: Classification, modifier: Modifier = Modi
     val container = if (secure) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     val content = if (secure) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = HubCorners.chip,
         color = container,
         contentColor = content,
         modifier = modifier,
@@ -154,7 +154,7 @@ fun SegmentedControl(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = HubCorners.field
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -176,7 +176,7 @@ fun SegmentedControl(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(13.dp))
+                        .clip(HubCorners.segment)
                         .background(bg)
                         // Selectable, not merely clickable: TalkBack then announces which of the
                         // segments is the current one instead of reading two identical labels.
@@ -222,7 +222,7 @@ fun ErrorBanner(message: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(HubCorners.banner)
             .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.75f))
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -293,7 +293,7 @@ fun HubTextField(
         placeholder = placeholder?.let {
             { Text(it, style = MaterialTheme.typography.bodyMedium, color = mutedTextColor) }
         },
-        shape = RoundedCornerShape(14.dp),
+        shape = HubCorners.field,
         isError = isError,
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
             autoCorrect = false,
@@ -337,7 +337,7 @@ fun NumberStepper(
         // wording belongs to the string resources like every other description in the app.
         val decreaseLabel = stringResource(R.string.cd_decrease)
         val increaseLabel = stringResource(R.string.cd_increase)
-        val shape = RoundedCornerShape(12.dp)
+        val shape = HubCorners.stepper
         Surface(
             shape = shape,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
@@ -364,7 +364,7 @@ fun NumberStepper(
                         singleLine = true,
                         textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.Center),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = HubCorners.stepper,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color.Transparent,
                             unfocusedBorderColor = Color.Transparent,
@@ -406,7 +406,7 @@ fun ChoiceDropdown(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier.menuAnchor().fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = HubCorners.field,
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium,
             colors = OutlinedTextFieldDefaults.colors(
@@ -448,7 +448,7 @@ fun TextAction(
             // accessible minimum, so Copy / Paste / Clear are easy to hit and nothing shifts.
             .minimumInteractiveComponentSize()
             .heightIn(min = touchTargetMin)
-            .clip(RoundedCornerShape(50))
+            .clip(HubCorners.chip)
             .clickable(enabled = enabled) { onClick() }
             .semantics {
                 // Distinguishes look-alike actions for TalkBack ("Copy public key" vs
@@ -484,7 +484,7 @@ fun SecondaryAction(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = HubCorners.button,
         color = Color.Transparent,
         contentColor = contentColor,
         border = androidx.compose.foundation.BorderStroke(1.dp, border),
@@ -517,7 +517,7 @@ fun PrimaryAction(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = HubCorners.button,
         color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier

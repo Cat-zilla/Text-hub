@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
@@ -30,6 +29,7 @@ import com.texthub.app.R
 import com.texthub.app.ui.components.SecondaryAction
 import com.texthub.app.ui.components.SectionCard
 import com.texthub.app.ui.components.SectionTitle
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.LocalUiSettings
 import androidx.compose.ui.text.font.FontFamily
@@ -133,7 +133,7 @@ fun AnalysisCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(HubCorners.row)
                 .clickable { onOverride() }
                 .padding(vertical = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
@@ -192,7 +192,7 @@ private fun CandidateRow(candidate: Candidate, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(HubCorners.row)
             .clickable { onClick() }
             .padding(vertical = Spacing.xs),
         verticalAlignment = Alignment.Top,
@@ -242,7 +242,7 @@ private fun CandidateRow(candidate: Candidate, onClick: () -> Unit) {
 private fun Badge(text: String, colour: Color) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .clip(HubCorners.chip)
             .background(colour.copy(alpha = 0.18f))
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {

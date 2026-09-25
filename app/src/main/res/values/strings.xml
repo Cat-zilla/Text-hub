@@ -250,6 +250,16 @@
     <string name="settings_advanced_summary">Processing and diagnostic options</string>
     <string name="settings_about_summary">Version, licences and app information</string>
     <string name="settings_interface">Interface</string>
+    <string name="settings_corner_style">Corner style</string>
+    <string name="settings_corner_style_sub">How rounded cards, buttons and fields are. Circular buttons, switches and radio buttons keep their shape.</string>
+    <string name="corner_style_rounded">Rounded</string>
+    <string name="corner_style_slight">Slightly rounded</string>
+    <string name="corner_style_square">Square</string>
+    <!-- Support action: a native action that opens the user\'s own browser. No WebView, no network. -->
+    <string name="support_buy_coffee">Buy me a coffee</string>
+    <string name="support_buy_coffee_sub">Support the development of Text Hub</string>
+    <string name="support_buy_coffee_cd">Buy me a coffee. Opens the donation page in your browser.</string>
+    <string name="support_no_browser">No browser app is available to open the link.</string>
     <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_diagnostics_body">Optional details for troubleshooting; everything here is off by default</string>
     <string name="settings_group_colour">Colour</string>

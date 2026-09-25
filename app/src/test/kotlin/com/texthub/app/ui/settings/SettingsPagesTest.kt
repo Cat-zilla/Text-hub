@@ -91,7 +91,37 @@ class SettingsPagesTest {
     @Test fun everyStoredPreferenceIsReachableFromSomeRow() {
         val reachable = SettingRow.values().map { it.prefKey }.toSet()
         SettingRow.REQUIRED_KEYS.forEach { key -> assertTrue("$key is not reachable in Settings", key in reachable) }
-        assertEquals(18 + 5, SettingRow.REQUIRED_KEYS.size)
+        assertEquals(19 + 5, SettingRow.REQUIRED_KEYS.size)
+        assertTrue(PrefsKeys.CORNER_STYLE in SettingRow.REQUIRED_KEYS)
+    }
+
+    @Test fun cornerStyleIsAChoiceOnAppearanceAndOnlyThere() {
+        // One row, on Appearance, in the Interface group - not a page of its own, not duplicated
+        // onto Accessibility or anywhere else.
+        assertEquals(listOf(SettingRow.CORNER_STYLE), SettingRow.values().filter { it.prefKey == PrefsKeys.CORNER_STYLE })
+        assertEquals(SettingsPage.APPEARANCE, SettingRow.CORNER_STYLE.page)
+        assertEquals(SettingsGroup.INTERFACE, SettingRow.CORNER_STYLE.group)
+        assertEquals(PrefsKeys.CORNER_STYLE, SettingRow.CORNER_STYLE.prefKey)
+        // ...and it introduces no new Settings page: the destinations stay exactly six.
+        assertEquals(6, SettingsPage.TOP_LEVEL.size)
+        assertEquals(7, SettingsPage.values().size)
+    }
+
+    @Test fun cornerStyleIsTheOnlyRowAddedToAppearance() {
+        // The 1.6.9 hierarchy is preserved: Appearance gained exactly one row, and no other page
+        // or group gained anything.
+        val appearance = SettingRow.values().filter { it.page == SettingsPage.APPEARANCE }
+        assertEquals(9, appearance.size)
+        appearance.forEach { row ->
+            assertTrue(
+                "${row.name} is not an Appearance row of the 1.6.9 hierarchy plus Corner style",
+                row in setOf(
+                    SettingRow.THEME, SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR, SettingRow.TEXT_SIZE,
+                    SettingRow.CORNER_STYLE, SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS,
+                    SettingRow.MONOSPACE_OUTPUT, SettingRow.UI_ANIMATION,
+                ),
+            )
+        }
     }
 
     @Test fun rowsThatShareAKeyAreExactlyTheDocumentedPairs() {
@@ -111,7 +141,8 @@ class SettingsPagesTest {
         assertEquals(
             setOf(
                 SettingRow.THEME, SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR, SettingRow.TEXT_SIZE,
-                SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS, SettingRow.MONOSPACE_OUTPUT, SettingRow.UI_ANIMATION,
+                SettingRow.CORNER_STYLE, SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS,
+                SettingRow.MONOSPACE_OUTPUT, SettingRow.UI_ANIMATION,
             ),
             on(SettingsPage.APPEARANCE),
         )
@@ -145,7 +176,10 @@ class SettingsPagesTest {
         assertEquals(listOf(SettingRow.THEME), SettingRow.of(SettingsGroup.THEME))
         assertEquals(listOf(SettingRow.ACCENT, SettingRow.DYNAMIC_COLOR), SettingRow.of(SettingsGroup.COLOUR))
         assertEquals(
-            listOf(SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS, SettingRow.MONOSPACE_OUTPUT),
+            listOf(
+                SettingRow.CORNER_STYLE, SettingRow.LAYOUT_DENSITY, SettingRow.SHOW_TOOL_ICONS,
+                SettingRow.MONOSPACE_OUTPUT,
+            ),
             SettingRow.of(SettingsGroup.INTERFACE),
         )
         assertEquals(
@@ -215,6 +249,33 @@ class SettingsPagesTest {
         assertEquals(SettingsPage.ADVANCED, SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.page)
         assertEquals(SettingsGroup.TOOL_CONFIGURATION, SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.group)
         assertFalse(SettingsAction.RESET_TOOL_SETTINGS_FROM_ADVANCED.destructive)
+    }
+
+    // ------------------------------------------------------------------ support action
+
+    @Test fun theSupportActionIsPlacedOnTheSettingsRootAndAboutOnly() {
+        assertEquals(listOf(SettingsPage.ROOT, SettingsPage.ABOUT), SupportPlacement.pages)
+        assertEquals(2, SupportPlacement.ALL.size)
+        assertEquals(SettingsPage.ROOT, SupportPlacement.SETTINGS_ROOT.page)
+        assertEquals(SettingsPage.ABOUT, SupportPlacement.ABOUT.page)
+    }
+
+    @Test fun noOtherPageCarriesTheSupportAction() {
+        val allowed = setOf(SettingsPage.ROOT, SettingsPage.ABOUT)
+        SettingsPage.values().filter { it !in allowed }.forEach { page ->
+            assertFalse("$page must not show the support action", SupportPlacement.isShownOn(page))
+        }
+        // The six destinations, the tool screens and the main UI are all outside Settings and so
+        // outside the question - but the check above already covers every page that exists.
+        assertEquals(6, SettingsPage.TOP_LEVEL.size)
+    }
+
+    @Test fun theSupportActionAddsNoSettingsPageOrGroup() {
+        // It is a row at the bottom of two existing pages - the root and About - not a new
+        // destination and not a group of its own.
+        assertEquals(listOf(SettingsPage.ROOT, SettingsPage.ABOUT), SupportPlacement.pages)
+        assertTrue(SettingRow.values().none { it.prefKey.contains("support") })
+        assertTrue(SettingsAction.values().none { it.name.contains("SUPPORT") })
     }
 
     // ----------------------------------------------------------------- navigation

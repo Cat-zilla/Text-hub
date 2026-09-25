@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Search
@@ -65,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import com.texthub.app.R
 import com.texthub.app.ui.components.ClassificationChip
 import com.texthub.app.ui.components.ToolMonogram
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.LocalUiSettings
 import com.texthub.app.ui.theme.decorativeDuration
@@ -135,13 +135,13 @@ fun ToolPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        shape = HubCorners.sheetTop,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = {
             Surface(
                 modifier = Modifier.padding(vertical = 10.dp),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f),
-                shape = RoundedCornerShape(50),
+                shape = HubCorners.circle,
             ) {
                 Box(Modifier.size(width = 36.dp, height = 4.dp))
             }
@@ -182,7 +182,7 @@ fun ToolPickerSheet(
                 placeholder = { Text(stringResource(R.string.picker_search), color = mutedTextColor) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = HubCorners.field,
                 textStyle = MaterialTheme.typography.bodyMedium,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -199,7 +199,7 @@ fun ToolPickerSheet(
                     selected = filter == PickerFilter.ALL,
                     onClick = { filter = PickerFilter.ALL },
                     label = { Text(stringResource(R.string.picker_all)) },
-                    shape = RoundedCornerShape(50),
+                    shape = HubCorners.chip,
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -209,7 +209,7 @@ fun ToolPickerSheet(
                     selected = filter == PickerFilter.FAVORITES,
                     onClick = { filter = PickerFilter.FAVORITES },
                     label = { Text(stringResource(R.string.picker_favorites)) },
-                    shape = RoundedCornerShape(50),
+                    shape = HubCorners.chip,
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -219,7 +219,7 @@ fun ToolPickerSheet(
                     selected = filter == PickerFilter.RECENT,
                     onClick = { filter = PickerFilter.RECENT },
                     label = { Text(stringResource(R.string.picker_recent)) },
-                    shape = RoundedCornerShape(50),
+                    shape = HubCorners.chip,
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -494,7 +494,7 @@ private fun FavoritesToolList(
                     Color.Transparent
                 },
                 shadowElevation = if (moving) 8.dp else 0.dp,
-                shape = RoundedCornerShape(14.dp),
+                shape = HubCorners.row,
                 modifier = Modifier
                     .fillMaxWidth()
                     .zIndex(if (moving) 1f else 0f)
@@ -639,7 +639,7 @@ private fun ToolRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(HubCorners.row)
             .background(container)
             .selectable(selected = selected, role = Role.Button, onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = 10.dp),

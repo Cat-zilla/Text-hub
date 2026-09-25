@@ -3,7 +3,6 @@ package com.texthub.app.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -33,14 +32,11 @@ enum class AppTheme(val id: String) {
     }
 }
 
-/** Consistent corner radii across the whole app. */
-val HubShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
-)
+/**
+ * Consistent corner radii across the whole app, as the app has always looked. This is the
+ * *Rounded* corner style; [hubShapesFor] derives the other two from the same table.
+ */
+val HubShapes = hubShapesFor(UiSettings.DEFAULT)
 
 /** Spacing scale: one system, used everywhere. */
 object Spacing {
@@ -105,7 +101,10 @@ fun TextHubTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = typographyFor(settings),
-            shapes = HubShapes,
+            // The corner style is resolved here, once, exactly like the type scale: every
+            // MaterialTheme.shapes.* read below this point follows the preference, and changing it
+            // recomposes the tree without recreating the activity.
+            shapes = hubShapesFor(settings),
             content = content,
         )
     }

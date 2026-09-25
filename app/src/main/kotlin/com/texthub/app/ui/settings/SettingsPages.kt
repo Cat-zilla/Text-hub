@@ -84,6 +84,7 @@ enum class SettingRow(val page: SettingsPage, val group: SettingsGroup, val pref
     // Appearance > Text
     TEXT_SIZE(SettingsPage.APPEARANCE, SettingsGroup.TEXT, PrefsKeys.LARGE_TEXT),
     // Appearance > Interface
+    CORNER_STYLE(SettingsPage.APPEARANCE, SettingsGroup.INTERFACE, PrefsKeys.CORNER_STYLE),
     LAYOUT_DENSITY(SettingsPage.APPEARANCE, SettingsGroup.INTERFACE, PrefsKeys.LAYOUT_DENSITY),
     SHOW_TOOL_ICONS(SettingsPage.APPEARANCE, SettingsGroup.INTERFACE, PrefsKeys.SHOW_TOOL_ICONS),
     MONOSPACE_OUTPUT(SettingsPage.APPEARANCE, SettingsGroup.INTERFACE, PrefsKeys.MONOSPACE_OUTPUT),
@@ -161,4 +162,32 @@ data class SettingsNavigation(val page: SettingsPage = SettingsPage.ROOT) {
     fun back(): SettingsNavigation? = page.parent?.let { copy(page = it) }
 
     val atRoot: Boolean get() = page == SettingsPage.ROOT
+}
+
+/**
+ * Where the support action ("Buy me a coffee") is shown: the **root of Settings** and **About**,
+ * and nowhere else in the app.
+ *
+ * It is deliberately not on Appearance, Accessibility, Privacy & security, Data & reset,
+ * Advanced, on any tool screen, in the Universal Decoder, in the tool picker or on the main
+ * processing screen: a donation action belongs where someone looks for "more about this app",
+ * and two quiet placements keep it from turning into an advertisement.
+ *
+ * The action itself stores nothing and performs no network call of its own - see
+ * [com.texthub.app.ui.support.SupportAction].
+ */
+enum class SupportPlacement(val page: SettingsPage) {
+    SETTINGS_ROOT(SettingsPage.ROOT),
+    ABOUT(SettingsPage.ABOUT);
+
+    companion object {
+        /** Every allowed placement, in declaration order. */
+        val ALL: List<SupportPlacement> = values().toList()
+
+        /** The pages that carry the support action - exactly these two. */
+        val pages: List<SettingsPage> = ALL.map { it.page }
+
+        /** True when [page] is allowed to show the support action. */
+        fun isShownOn(page: SettingsPage): Boolean = pages.contains(page)
+    }
 }

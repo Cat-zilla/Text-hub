@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -56,14 +58,17 @@ import com.texthub.app.ui.settings.SettingsNavRow
 import com.texthub.app.ui.settings.SettingsNavigation
 import com.texthub.app.ui.settings.SettingsNote
 import com.texthub.app.ui.settings.SettingsPage
+import com.texthub.app.ui.settings.SettingsSupportRow
 import com.texthub.app.ui.settings.SettingsSwitchRow
 import com.texthub.app.ui.settings.SettingsValueRow
+import com.texthub.app.ui.support.openSupportPage
 import com.texthub.app.ui.theme.AccentOption
 import com.texthub.app.ui.theme.AppTheme
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.app.viewmodel.HubUiState
 import com.texthub.core.prefs.AnimationMode
+import com.texthub.core.prefs.CornerStyle
 import com.texthub.core.prefs.LayoutDensity
 import com.texthub.core.prefs.UiSettings
 
@@ -89,6 +94,8 @@ fun SettingsScreen(
     onResetFavorites: () -> Unit,
     onClearSavedRsaKeys: () -> Unit,
     onClearEverything: () -> Unit,
+    /** Opens the support page in the user's browser. Called only from the two allowed places. */
+    onSupport: () -> Unit,
     versionName: String,
     versionCode: Int,
     toolCount: Int,
@@ -165,6 +172,16 @@ fun SettingsScreen(
                             onClick = { open(destination) },
                         )
                     }
+                    // The support action, once, at the bottom of the root list - and nowhere else
+                    // but About. Spaced away from the destinations so it reads as a closing note,
+                    // not as a seventh destination.
+                    Spacer(Modifier.height(Spacing.xxl))
+                    SettingsSupportRow(
+                        title = stringResource(R.string.support_buy_coffee),
+                        subtitle = stringResource(R.string.support_buy_coffee_sub),
+                        contentDescription = stringResource(R.string.support_buy_coffee_cd),
+                        onClick = { onSupport() },
+                    )
                 }
 
                 // ------------------------------------------------------------ appearance
@@ -175,6 +192,7 @@ fun SettingsScreen(
                     var choosingTextSize by remember { mutableStateOf(false) }
                     var choosingDensity by remember { mutableStateOf(false) }
                     var choosingAnimation by remember { mutableStateOf(false) }
+                    var choosingCornerStyle by remember { mutableStateOf(false) }
 
                     SettingsGroup(label = stringResource(R.string.settings_theme)) {
                         SegmentedControl(
@@ -221,6 +239,13 @@ fun SettingsScreen(
                         )
                     }
                     SettingsGroup(label = stringResource(R.string.settings_interface)) {
+                        // Corner style changes the app itself, not a preview of it: the value is
+                        // handed to the shape tokens through the theme (see HubCorners).
+                        SettingsValueRow(
+                            title = stringResource(R.string.settings_corner_style),
+                            value = stringResource(cornerStyleLabel(settings.cornerStyle)),
+                            onClick = { choosingCornerStyle = true },
+                        )
                         SettingsValueRow(
                             title = stringResource(R.string.settings_density),
                             value = stringResource(
@@ -305,6 +330,20 @@ fun SettingsScreen(
                                 }
                             },
                             onDismiss = { choosingDensity = false },
+                        )
+                    }
+                    if (choosingCornerStyle) {
+                        SettingsChoiceDialog(
+                            title = stringResource(R.string.settings_corner_style),
+                            message = stringResource(R.string.settings_corner_style_sub),
+                            options = listOf(
+                                stringResource(R.string.corner_style_rounded),
+                                stringResource(R.string.corner_style_slight),
+                                stringResource(R.string.corner_style_square),
+                            ),
+                            selectedIndex = settings.cornerStyle.ordinal,
+                            onSelect = { i -> onSettingsChange { it.copy(cornerStyle = CornerStyle.values()[i]) } },
+                            onDismiss = { choosingCornerStyle = false },
                         )
                     }
                     if (choosingAnimation) {
@@ -578,6 +617,14 @@ fun SettingsScreen(
                         text = stringResource(R.string.settings_local_only),
                         icon = Icons.Outlined.Info,
                     )
+                    // The same support action as on the Settings root, kept at the very bottom of
+                    // About so it never competes with the version, build and licence facts above.
+                    SettingsSupportRow(
+                        title = stringResource(R.string.support_buy_coffee),
+                        subtitle = stringResource(R.string.support_buy_coffee_sub),
+                        contentDescription = stringResource(R.string.support_buy_coffee_cd),
+                        onClick = { onSupport() },
+                    )
                 }
             }
           }
@@ -658,6 +705,13 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+/** The label of a corner style, in the order the chooser lists them. */
+private fun cornerStyleLabel(style: CornerStyle): Int = when (style) {
+    CornerStyle.ROUNDED -> R.string.corner_style_rounded
+    CornerStyle.SLIGHT -> R.string.corner_style_slight
+    CornerStyle.SQUARE -> R.string.corner_style_square
 }
 
 private fun SettingsPage.titleRes(): Int = when (this) {

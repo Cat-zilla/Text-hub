@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import com.texthub.app.ui.theme.TextHubTheme
 import com.texthub.app.ui.settings.SettingsNavigation
+import com.texthub.app.ui.support.openSupportPage
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -110,6 +111,19 @@ fun HubApp(
             return
         }
         copyValue(text)
+    }
+
+    /**
+     * The support action. Text Hub makes no request of its own: the URL is handed to whatever
+     * browser the user already has, and nothing about the tap is stored. A device with no browser
+     * at all gets a short message instead of a crash.
+     */
+    fun onSupport() {
+        if (!openSupportPage(context)) {
+            scope.launch {
+                snackbarHostState.showSnackbar(context.getString(com.texthub.app.R.string.support_no_browser))
+            }
+        }
     }
 
     fun shareOutput() {
@@ -218,6 +232,7 @@ fun HubApp(
                                 )
                             }
                         },
+                        onSupport = ::onSupport,
                         onClearTemporaryData = {
                             viewModel.clearTemporaryData()
                             scope.launch {

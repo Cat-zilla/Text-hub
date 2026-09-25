@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -86,6 +85,7 @@ import com.texthub.app.ui.components.SegmentedControl
 import com.texthub.app.ui.components.StatsLine
 import com.texthub.app.ui.components.TextAction
 import com.texthub.app.ui.components.ToolMonogram
+import com.texthub.app.ui.theme.HubCorners
 import com.texthub.app.ui.theme.Spacing
 import com.texthub.app.ui.theme.mutedTextColor
 import com.texthub.app.viewmodel.HubUiState
@@ -876,7 +876,7 @@ private fun RsaKeyGenSections(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 96.dp)
-                        .clip(MaterialTheme.shapes.medium)
+                        .clip(HubCorners.medium)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                         .clickable(onClickLabel = stringResource(R.string.cd_reveal_private)) { privateRevealed = true }
                         .padding(Spacing.md),
@@ -1251,7 +1251,7 @@ private fun SavedRsaKeyPicker(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(HubCorners.row)
                                 .clickable { onPick(saved.name) }
                                 .semantics(mergeDescendants = true) { contentDescription = description }
                                 .padding(horizontal = Spacing.xs, vertical = Spacing.sm),
