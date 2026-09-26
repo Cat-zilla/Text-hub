@@ -556,3 +556,14 @@ Manual (no emulator here — not performed; do these on a device):
 | 12 | Tap the support row | The user's browser opens `https://www.buymeacoffee.com/Catzilla0`; nothing loads inside Text Hub |
 | 13 | TalkBack | Corner style choices announce "Rounded / Slightly rounded / Square"; the support row announces "Buy me a coffee. Opens the donation page in your browser." |
 | 14 | Large text + larger touch targets | The new rows grow like every other row; nothing clips or overlaps |
+
+## Round 21 — 1.7.0: icon resize (smaller mark)
+
+| Step | Check | Expected result |
+| --- | --- | --- |
+| 1 | Regenerate icons (`python3 tools/make_app_icon.py`) with `MARK_FRACTION = 0.58` | Foreground mark bbox 195×181 inside the 72 dp safe zone (x 121–315, y 126–306 on the 432 px canvas) |
+| 2 | Legacy mipmaps | Mark spans ≈45% of canvas in every density (was ≈52%); even margins (≈53 px each side at xxxhdpi) |
+| 3 | Background plate | Unchanged dark-navy gradient top `(17,31,53)` → bottom `(11,21,36)` |
+| 4 | Mark colours | Blue `#1070F0`-ish and white present in the packaged foreground layer |
+| 5 | Rebuild + verify | `:core:test` 478 / `:app:testDebugUnitTest` 104 pass, lint 0 errors, signed release `com.texthub.app` v1.7.0(19), cert `cc69d4d0…`, no INTERNET |
+| 6 | Packaged APK | Every density + adaptive foreground carry the smaller mark |

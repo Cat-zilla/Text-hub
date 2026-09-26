@@ -39,6 +39,9 @@ SOURCE = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tools/assets/app-ic
 CANVAS = 432
 # The safe zone every launcher keeps: the central 72 dp of the 108 dp canvas.
 SAFE = 288  # 72 / 108 * 432
+# How much of the 108 dp canvas the artwork's bounding box should span. Smaller than the full
+# safe zone so the mark sits with comfortable breathing room on its plate instead of filling it.
+MARK_FRACTION = 0.58
 
 DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
@@ -321,9 +324,10 @@ def _bilinear(px, w, h, fx, fy):
 def build_foreground(kind, info, px, w, h):
     """The mark, background knocked out, scaled to the 72 dp safe zone, on transparency."""
     if kind == "transparent_margins":
-        # The source already carries its own transparency: fit the whole image into the safe zone
+        # The source already carries its own transparency: fit the whole image into the mark box
         # and keep its alpha as-is (no matte - there is no painted background to knock out).
-        scale = SAFE / max(w, h)
+        target = CANVAS * MARK_FRACTION
+        scale = target / max(w, h)
         off_x = (CANVAS - w * scale) / 2.0
         off_y = (CANVAS - h * scale) / 2.0
 
@@ -343,8 +347,9 @@ def build_foreground(kind, info, px, w, h):
 
     # full-bleed: sample the square crop around the mark, apply the matte.
     x0, y0, side = info["crop"]
-    scale = SAFE / side
-    off = (CANVAS - SAFE) / 2.0
+    target = CANVAS * MARK_FRACTION
+    scale = target / side
+    off = (CANVAS - target) / 2.0
 
     def at(dx, dy):
         fx = x0 + (dx - off) / scale
